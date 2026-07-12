@@ -21,18 +21,19 @@ The implementation follows clean-code boundaries: each public function has one r
 ## CLI
 
 ```text
-axirc check program.axir
-axirc run program.axir [--memory bytes] [--max-steps count]
-axirc dump program.axir
+axirc target <target_name>
+axirc check program.axir [--target <target_name>]
+axirc run program.axir [--target <target_name>] [--memory bytes] [--max-steps count]
+axirc dump program.axir [--target <target_name>]
 ```
 
-Passing only `program.axir` is equivalent to `check`.
+`target <target_name>` loads and validates `./targets/<target_name>.yml` beside the executable. `--target` applies the same validation before processing an AXIR source file. Target names are restricted to letters, digits, `_`, and `-` so they cannot escape the binary's `./targets` directory.
 
 `check` accepts the complete v1.0 vocabulary, including load/store variants, integer and floating arithmetic, comparisons, conversions, labels, functions, static and indirect calls, returns, process control, symbolic syscalls, static data, and `addr` references. It rejects undefined labels/data, malformed slots, invalid operand classes, duplicate labels/data, and malformed literals.
 
 `run` implements integer/FP arithmetic, memory, `addr`, labels, branches, `ret`, and `hlt`. Memory is byte-addressable and little-endian in this reference runtime. The un-suffixed `load8`, `load16`, and `load32` forms are accepted as zero-extending compatibility aliases; the revised `load8u/s`, `load16u/s`, and `load32u/s` forms are also supported. Shift counts are masked to 0–63. `itof` treats its source as signed 64-bit; `ftoi` truncates finite signed-64-bit-range values.
 
-Calls and syscalls validate but deliberately do not execute: AXIR leaves their ABI, target address model, and syscall convention to a backend mapping file. Direct machine-code emission, linking/optimization, and target-mapping parsing are therefore the next implementation layer, not simulated by the reference interpreter.
+Calls and syscalls validate but deliberately do not execute: AXIR leaves their ABI, target address model, and syscall convention to the selected backend mapping. The bootstrap now resolves its target configuration directly from the binary's `./targets` directory without a YAML library. The configured templates contain machine-code bytes, not assembly text; the next layer must optimize and link all input units before direct ELF byte emission.
 
 ## Tests
 
