@@ -49,6 +49,31 @@ std::vector<std::uint8_t> byte_sequence(const std::string &line, const std::stri
   return bytes;
 }
 
+void parse_syscall_slots(const std::string &line, SyscallTemplate &syscall) {
+  const std::size_t marker = line.find("slots: {");
+  if (marker == std::string::npos) return;
+  const std::size_t start = marker + std::string("slots: {").size();
+  const std::size_t end = line.find('}', start);
+  if (end == std::string::npos) throw std::runtime_error("unterminated syscall slot mapping in target configuration");
+  std::istringstream entries(line.substr(start, end - start));
+  std::string entry;
+  while (std::getline(entries, entry, ',')) {
+    const std::size_t separator = entry.find(':');
+    if (separator == std::string::npos) throw std::runtime_error("invalid syscall slot mapping in target configuration");
+    const std::string key = trim(entry.substr(0, separator));
+    const std::string value = trim(entry.substr(separator + 1));
+    std::size_t consumed = 0;
+    const unsigned long long slot = std::stoull(value, &consumed, 0);
+    if (consumed != value.size()) throw std::runtime_error("invalid syscall slot '" + value + "'");
+    if (key == "result") {
+      syscall.has_result_slot = true;
+      syscall.result_slot = static_cast<std::uint64_t>(slot);
+    } else {
+      syscall.argument_slots.push_back(static_cast<std::uint64_t>(slot));
+    }
+  }
+}
+
 } // namespace
 
 TargetConfig load_target_config(std::string_view executable_path, std::string_view target_name) {
@@ -63,6 +88,7 @@ TargetConfig load_target_config(std::string_view executable_path, std::string_vi
       "read", "write", "read_file", "write_file", "open", "close", "seek", "stat", "remove", "mkdir", "rmdir", "time", "sleep", "exit"};
   std::array<bool, required_syscalls.size()> syscall_sections{};
   std::array<bool, required_syscalls.size()> syscall_bytes{};
+  std::array<bool, required_syscalls.size()> syscall_slot_mappings{};
   std::size_t active_syscall = required_syscalls.size();
   std::vector<std::uint8_t> exit_status_prefix;
   std::vector<std::uint8_t> exit_number_sequence;
@@ -87,8 +113,12 @@ TargetConfig load_target_config(std::string_view executable_path, std::string_vi
       if (text == "syscall " + std::string(required_syscalls[index]) + ":") {
         syscall_sections[index] = true;
         active_syscall = index;
-        syscalls.push_back({std::string(required_syscalls[index]), {}, {}});
+        syscalls.push_back({std::string(required_syscalls[index]), {}, false, 0, {}, {}});
       }
+    }
+    if (active_syscall < required_syscalls.size() && text.rfind("slots:", 0) == 0) {
+      syscall_slot_mappings[active_syscall] = true;
+      parse_syscall_slots(text, syscalls.back());
     }
     if (active_syscall < required_syscalls.size() && text.rfind("bytes:", 0) == 0) {
       syscall_bytes[active_syscall] = true;
@@ -105,6 +135,7 @@ TargetConfig load_target_config(std::string_view executable_path, std::string_vi
   for (std::size_t index = 0; index < required_syscalls.size(); ++index) {
     if (!syscall_sections[index]) throw std::runtime_error("target configuration '" + path.string() + "' is missing section 'syscall " + std::string(required_syscalls[index]) + "'");
     if (!syscall_bytes[index]) throw std::runtime_error("target configuration '" + path.string() + "' is missing bytes for 'syscall " + std::string(required_syscalls[index]) + "'");
+    if (!syscall_slot_mappings[index]) throw std::runtime_error("target configuration '" + path.string() + "' is missing slot mapping for 'syscall " + std::string(required_syscalls[index]) + "'");
   }
   return {name, path, std::move(exit_status_prefix), std::move(exit_number_sequence), std::move(syscall_sequence), std::move(syscalls)};
 }

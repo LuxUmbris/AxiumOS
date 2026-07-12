@@ -74,6 +74,18 @@ void append_slot_xor(std::vector<std::uint8_t> &code, std::uint64_t destination,
   code.insert(code.end(), {0x48, 0x31, static_cast<std::uint8_t>(0xc0 | (slot_register(right) << 3) | slot_register(destination))});
 }
 
+void append_syscall_result(std::vector<std::uint8_t> &code, std::uint64_t slot) {
+  code.insert(code.end(), {0x48, 0x89, static_cast<std::uint8_t>(0xc0 | slot_register(slot))});
+}
+
+void validate_direct_syscall_abi(const SyscallTemplate &syscall) {
+  if (syscall.argument_slots.size() > 3) throw std::runtime_error("the current direct emitter supports at most three syscall arguments");
+  for (std::size_t index = 0; index < syscall.argument_slots.size(); ++index) {
+    if (syscall.argument_slots[index] != index) throw std::runtime_error("the current direct emitter requires syscall arguments to use ABI slots I[0..2]");
+  }
+  if (syscall.has_result_slot && syscall.result_slot != 0) throw std::runtime_error("the current direct emitter requires a syscall result in I[0]");
+}
+
 void write_u32(std::vector<std::uint8_t> &code, std::size_t offset, std::uint32_t value) {
   if (offset + 4 > code.size()) throw std::runtime_error("internal direct-emission relocation error");
   for (unsigned shift = 0; shift < 32; shift += 8) code[offset + shift / 8] = static_cast<std::uint8_t>(value >> shift);
@@ -130,12 +142,15 @@ void emit_linux_x86_64_executable(const Program &program, const TargetConfig &ta
       const std::string &name = instruction.operands[0].label;
       const SyscallTemplate &syscall = syscall_template(target, name);
       if (syscall.load_number.empty() || syscall.invoke.empty()) throw std::runtime_error("direct emission requires a primitive byte template for syscall '" + name + "'");
+      validate_direct_syscall_abi(syscall);
       code.insert(code.end(), syscall.load_number.begin(), syscall.load_number.end());
       code.insert(code.end(), syscall.invoke.begin(), syscall.invoke.end());
+      if (syscall.has_result_slot) append_syscall_result(code, syscall.result_slot);
     } else if (instruction.opcode == "hlt" && instruction.operands[0].kind == Immediate) {
       append_exit_code(code, instruction.operands[0].immediate, target);
     } else if (instruction.opcode == "hlt" && instruction.operands[0].kind == IntegerSlot && instruction.operands[0].slot == 0) {
       const SyscallTemplate &exit = syscall_template(target, "exit");
+      validate_direct_syscall_abi(exit);
       code.insert(code.end(), exit.load_number.begin(), exit.load_number.end());
       code.insert(code.end(), exit.invoke.begin(), exit.invoke.end());
     } else {

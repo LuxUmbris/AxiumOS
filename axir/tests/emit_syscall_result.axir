@@ -1,0 +1,9 @@
+# Target syscall result mapping returns write's byte count in I[0].
+data text: "result-slot\n"
+xor I[0], I[0], I[0]
+add I[0], I[0], 1
+addr I[1], text
+xor I[2], I[2], I[2]
+add I[2], I[2], 12
+syscall write
+hlt I[0]

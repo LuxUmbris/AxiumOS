@@ -65,4 +65,11 @@ set +e
 status=$?
 set -e
 test "$status" -eq 43
+./build/axirc emit tests/emit_syscall_result.axir --target linux_x86_64 -o "$tmpdir/syscall-result"
+set +e
+output=$("$tmpdir/syscall-result")
+status=$?
+set -e
+test "$status" -eq 12
+test "$output" = 'result-slot'
 printf 'AXIR tests passed\n'

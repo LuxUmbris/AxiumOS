@@ -16,6 +16,9 @@ struct RunConfig {
 
 struct SyscallTemplate {
   std::string name;
+  std::vector<std::uint64_t> argument_slots;
+  bool has_result_slot = false;
+  std::uint64_t result_slot = 0;
   std::vector<std::uint8_t> load_number;
   std::vector<std::uint8_t> invoke;
 };
