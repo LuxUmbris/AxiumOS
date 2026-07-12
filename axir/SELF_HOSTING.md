@@ -40,8 +40,10 @@ AXIR is self-hosted only when an AXIR-language implementation can accept AXIR so
 
 Stage 0 is complete: the C++ bootstrap snapshot is committed on `bootstrap`.
 
-Stage 1 has a concrete Linux x86-64 ELF target configuration with direct machine-code byte templates. The bootstrap resolves it only from `./targets/<target_name>.yml` beside its binary and does so without a YAML library or any other runtime dependency. Its backend, linker/optimizer, ELF writer, and bootstrap execution support are not implemented yet. Stages 2–5 are not implemented. The target configuration is a contract, not a substitute for the required AXIR-written frontend, linker, backend, and fixed-point rebuild.
+Stage 1 has a concrete Linux x86-64 ELF target configuration with direct machine-code byte templates and a required `syscall <name>` section for every symbolic syscall. Each section records Linux syscall bytes plus `I[n]` argument/result slots; generated code uses raw Linux syscalls and never libc. The bootstrap resolves the configuration only from `./targets/<target_name>.yml` beside its binary and does so without a YAML library or other runtime dependency.
+
+The bootstrap has a verified direct-ELF proof: it parses, validates, links a module, removes no-op moves, expands configured bytes, relocates static data, writes a standalone ELF64 image itself, and executes an AXIR `write` plus `exit` sequence. It does not invoke an assembler or linker. This is deliberately only a backend subset (`mov` immediate, `add` immediate, `xor`, `addr`, primitive syscall, and `hlt` over `I[0..2]`); it is not a complete v1.0 backend or a self-hosted compiler. Full multi-unit linking, register allocation/spills, all operations, control flow, calls, floating point, writable data/BSS, and runtime execution support remain unimplemented. Stages 2–5 are not implemented.
 
 ## Next implementation milestone
 
-Implement the Linux x86-64 ELF backend described by `targets/linux_x86_64.yml` in the bootstrap, then use it to execute AXIR runtime-substrate programs. The self-hosted compiler source can begin only after that bootstrap execution contract is verified.
+Complete the Linux x86-64 direct backend in the bootstrap: multi-unit linking, all v1.0 instruction families, calls, branches, writable storage, and deterministic ELF relocations. Then use it to execute AXIR runtime-substrate programs. The AXIR-written compiler source can begin only after that complete bootstrap execution contract is verified.
