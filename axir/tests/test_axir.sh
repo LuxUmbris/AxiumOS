@@ -2,7 +2,8 @@
 set -eu
 
 cd "$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
-trap 'rm -f /tmp/axir-dump.txt /tmp/axir-invalid.out' EXIT
+tmpdir=$(mktemp -d /tmp/axir-test.XXXXXX)
+trap 'rm -rf "$tmpdir" /tmp/axir-dump.txt /tmp/axir-invalid.out' EXIT
 make clean
 make
 ./build/axirc --help >/dev/null
@@ -20,5 +21,14 @@ fi
 if ./build/axirc check tests/invalid.axir >/tmp/axir-invalid.out 2>&1; then
   echo "invalid AXIR unexpectedly passed validation" >&2
   exit 1
+fi
+./build/axirc emit tests/emit_exit.axir --target linux_x86_64 -o "$tmpdir/exit37"
+test -x "$tmpdir/exit37"
+if "$tmpdir/exit37"; then
+  echo "direct ELF unexpectedly exited with status 0" >&2
+  exit 1
+else
+  status=$?
+  test "$status" -eq 37
 fi
 printf 'AXIR tests passed\n'

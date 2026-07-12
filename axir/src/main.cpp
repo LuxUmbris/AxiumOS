@@ -1,8 +1,10 @@
 #include "codegen.hpp"
+#include "emitter.hpp"
 
 #include <fstream>
 #include <iostream>
 #include <limits>
+#include <optional>
 #include <sstream>
 #include <string>
 
@@ -10,10 +12,11 @@ namespace {
 
 void usage(const char *argv0) {
   std::cerr << "Usage: " << argv0 << " target <target_name>\n"
-            << "       " << argv0 << " <check|run|dump> <program.axir> [options]\n"
+            << "       " << argv0 << " <check|run|dump|emit> <program.axir> [options]\n"
             << "       " << argv0 << " <program.axir>  # same as check\n\n"
             << "Options:\n"
-            << "  --target <target_name>  Validate ./targets/<target_name>.yml beside axirc\n"
+            << "  --target <target_name>  Load ./targets/<target_name>.yml beside axirc\n"
+            << "  -o, --output <path>     Native executable path for emit\n"
             << "  --memory <bytes>        Reference memory size for run (default: 65536)\n"
             << "  --max-steps <n>         Reference step limit for run (default: 1000000)\n"
             << "  -h, --help              Show this help text\n";
@@ -32,14 +35,16 @@ bool parse_size(const std::string &text, std::size_t &out) {
 }
 
 bool command_name(const std::string &name) {
-  return name == "check" || name == "run" || name == "dump";
+  return name == "check" || name == "run" || name == "dump" || name == "emit";
 }
 
-bool parse_options(int argc, char **argv, int &arg, axir::RunConfig &run_config, std::string &target_name) {
+bool parse_options(int argc, char **argv, int &arg, axir::RunConfig &run_config, std::string &target_name, std::string &output_path) {
   while (arg < argc) {
     const std::string option = argv[arg++];
     if (option == "--target" && arg < argc) {
       target_name = argv[arg++];
+    } else if ((option == "-o" || option == "--output") && arg < argc) {
+      output_path = argv[arg++];
     } else if ((option == "--memory" || option == "--max-steps") && arg < argc) {
       std::size_t value = 0;
       if (!parse_size(argv[arg++], value) || value == 0) {
@@ -95,8 +100,10 @@ int main(int argc, char **argv) {
     const std::string source_path = argv[arg++];
     axir::RunConfig run_config;
     std::string target_name;
-    if (!parse_options(argc, argv, arg, run_config, target_name)) return 2;
-    if (!target_name.empty()) axir::load_target_config(argv[0], target_name);
+    std::string output_path;
+    if (!parse_options(argc, argv, arg, run_config, target_name, output_path)) return 2;
+    std::optional<axir::TargetConfig> target;
+    if (!target_name.empty()) target = axir::load_target_config(argv[0], target_name);
 
     std::ifstream input(source_path, std::ios::binary);
     if (!input) throw std::runtime_error("cannot open '" + source_path + "'");
@@ -113,6 +120,14 @@ int main(int argc, char **argv) {
                 << program.data.size() << " data object(s)\n";
       return 0;
     }
+    if (command == "emit") {
+      if (!target) throw std::runtime_error("emit requires --target <target_name>");
+      if (output_path.empty()) throw std::runtime_error("emit requires -o <path>");
+      axir::emit_linux_x86_64_executable(program, *target, output_path);
+      std::cout << "AXIR native executable emitted: " << output_path << '\n';
+      return 0;
+    }
+    if (!output_path.empty()) throw std::runtime_error("-o is only valid with emit");
     const int status = axir::run(program, run_config);
     std::cout << "AXIR program exited with status " << status << "\n";
     return status;

@@ -121,29 +121,75 @@ encoding:
     mov_eax_exit: {bytes: [0xb8, 0x3c, 0x00, 0x00, 0x00]}
     syscall: {bytes: [0x0f, 0x05]}
 
-syscalls:
+syscall_abi:
   convention: linux_x86_64
+  slot_namespace: I
   number_register: rax
   argument_registers: [rdi, rsi, rdx, r10, r8, r9]
-  results:
-    success: rax
-    error: negative_errno_in_rax
-  direct:
-    read: 0
-    write: 1
-    open: 2
-    close: 3
-    seek: 8
-    stat: 4
-    remove: 87
-    mkdir: 83
-    rmdir: 84
-    time: 201
-    sleep: 35
-    exit: 60
-  composite:
-    read_file: [open, read, close]
-    write_file: [open, write, close]
+  result_register: rax
+  error_result: negative_errno_in_rax
+
+# Each symbolic AXIR syscall has its own byte-level section. `load_number`
+# and `invoke` are copied into the native image by the internal backend.
+# Composite operations expand only into the named primitive sections below;
+# they never call libc or any other external runtime.
+syscall read:
+  number: 0
+  slots: {fd: 0, buffer: 1, count: 2, result: 0}
+  bytes: {load_number: [0xb8, 0x00, 0x00, 0x00, 0x00], invoke: [0x0f, 0x05]}
+syscall write:
+  number: 1
+  slots: {fd: 0, buffer: 1, count: 2, result: 0}
+  bytes: {load_number: [0xb8, 0x01, 0x00, 0x00, 0x00], invoke: [0x0f, 0x05]}
+syscall open:
+  number: 2
+  slots: {path: 0, flags: 1, mode: 2, result: 0}
+  bytes: {load_number: [0xb8, 0x02, 0x00, 0x00, 0x00], invoke: [0x0f, 0x05]}
+syscall close:
+  number: 3
+  slots: {fd: 0, result: 0}
+  bytes: {load_number: [0xb8, 0x03, 0x00, 0x00, 0x00], invoke: [0x0f, 0x05]}
+syscall stat:
+  number: 4
+  slots: {path: 0, buffer: 1, result: 0}
+  bytes: {load_number: [0xb8, 0x04, 0x00, 0x00, 0x00], invoke: [0x0f, 0x05]}
+syscall seek:
+  number: 8
+  slots: {fd: 0, offset: 1, whence: 2, result: 0}
+  bytes: {load_number: [0xb8, 0x08, 0x00, 0x00, 0x00], invoke: [0x0f, 0x05]}
+syscall sleep:
+  number: 35
+  slots: {request: 0, remainder: 1, result: 0}
+  bytes: {load_number: [0xb8, 0x23, 0x00, 0x00, 0x00], invoke: [0x0f, 0x05]}
+syscall exit:
+  number: 60
+  slots: {status: 0}
+  bytes: {load_number: [0xb8, 0x3c, 0x00, 0x00, 0x00], invoke: [0x0f, 0x05]}
+syscall mkdir:
+  number: 83
+  slots: {path: 0, mode: 1, result: 0}
+  bytes: {load_number: [0xb8, 0x53, 0x00, 0x00, 0x00], invoke: [0x0f, 0x05]}
+syscall remove:
+  number: 87
+  slots: {path: 0, result: 0}
+  bytes: {load_number: [0xb8, 0x57, 0x00, 0x00, 0x00], invoke: [0x0f, 0x05]}
+syscall time:
+  number: 201
+  slots: {time_pointer: 0, result: 0}
+  bytes: {load_number: [0xb8, 0xc9, 0x00, 0x00, 0x00], invoke: [0x0f, 0x05]}
+syscall rmdir:
+  number: 84
+  slots: {path: 0, result: 0}
+  bytes: {load_number: [0xb8, 0x54, 0x00, 0x00, 0x00], invoke: [0x0f, 0x05]}
+syscall read_file:
+  slots: {path: 0, buffer: 1, capacity: 2, result: 0}
+  primitive_sequence: [open, read, close]
+  bytes: {invoke: [0x0f, 0x05]}
+syscall write_file:
+  slots: {path: 0, buffer: 1, count: 2, mode: 3, result: 0}
+  primitive_sequence: [open, write, close]
+  open_flags: 577
+  bytes: {invoke: [0x0f, 0x05]}
 
 runtime_contract:
   input_path_argument: argv[1]

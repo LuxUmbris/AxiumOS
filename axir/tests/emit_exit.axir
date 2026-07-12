@@ -1,0 +1,2 @@
+# The first direct native-emission proof: exit without libc, an assembler, or a linker.
+hlt 37
