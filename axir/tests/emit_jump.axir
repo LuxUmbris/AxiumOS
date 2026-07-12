@@ -1,0 +1,5 @@
+# Direct forward rel32 jump fixup proof.
+jmp completed
+hlt 1
+completed:
+hlt 43

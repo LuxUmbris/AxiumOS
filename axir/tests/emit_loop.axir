@@ -1,0 +1,7 @@
+# Direct rel32 branch fixup and cjump lowering proof.
+xor I[0], I[0], I[0]
+add I[0], I[0], 3
+loop:
+sub I[0], I[0], 1
+cjump I[0], loop
+hlt 41

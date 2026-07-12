@@ -56,15 +56,27 @@ void append_slot_move(std::vector<std::uint8_t> &code, std::uint64_t destination
 }
 
 void append_slot_add_immediate(std::vector<std::uint8_t> &code, std::uint64_t destination, std::uint64_t left, std::uint64_t immediate) {
-  if (immediate > std::numeric_limits<std::uint32_t>::max()) throw std::runtime_error("direct add immediate must fit in 32 bits");
+  if (immediate > std::numeric_limits<std::uint32_t>::max()) throw std::runtime_error("direct arithmetic immediate must fit in 32 bits");
   append_slot_move(code, destination, left);
   code.insert(code.end(), {0x48, 0x81, static_cast<std::uint8_t>(0xc0 | slot_register(destination))});
+  append_u32(code, static_cast<std::uint32_t>(immediate));
+}
+
+void append_slot_sub_immediate(std::vector<std::uint8_t> &code, std::uint64_t destination, std::uint64_t left, std::uint64_t immediate) {
+  if (immediate > std::numeric_limits<std::uint32_t>::max()) throw std::runtime_error("direct arithmetic immediate must fit in 32 bits");
+  append_slot_move(code, destination, left);
+  code.insert(code.end(), {0x48, 0x81, static_cast<std::uint8_t>(0xe8 | slot_register(destination))});
   append_u32(code, static_cast<std::uint32_t>(immediate));
 }
 
 void append_slot_xor(std::vector<std::uint8_t> &code, std::uint64_t destination, std::uint64_t left, std::uint64_t right) {
   append_slot_move(code, destination, left);
   code.insert(code.end(), {0x48, 0x31, static_cast<std::uint8_t>(0xc0 | (slot_register(right) << 3) | slot_register(destination))});
+}
+
+void write_u32(std::vector<std::uint8_t> &code, std::size_t offset, std::uint32_t value) {
+  if (offset + 4 > code.size()) throw std::runtime_error("internal direct-emission relocation error");
+  for (unsigned shift = 0; shift < 32; shift += 8) code[offset + shift / 8] = static_cast<std::uint8_t>(value >> shift);
 }
 
 void write_u64(std::vector<std::uint8_t> &code, std::size_t offset, std::uint64_t value) {
@@ -85,18 +97,35 @@ void emit_linux_x86_64_executable(const Program &program, const TargetConfig &ta
     std::size_t code_offset;
     std::string symbol;
   };
+  struct BranchPatch {
+    std::size_t displacement_offset;
+    std::string symbol;
+  };
   std::vector<std::uint8_t> code;
   std::vector<DataPatch> patches;
+  std::vector<BranchPatch> branch_patches;
+  std::vector<std::size_t> instruction_offsets;
+  instruction_offsets.reserve(program.instructions.size() + 1);
   for (const Instruction &instruction : program.instructions) {
+    instruction_offsets.push_back(code.size());
     if (instruction.opcode == "mov" && instruction.operands[0].kind == IntegerSlot && instruction.operands[1].kind == Immediate) {
       append_slot_immediate(code, instruction.operands[0].slot, instruction.operands[1].immediate);
     } else if (instruction.opcode == "add" && instruction.operands[0].kind == IntegerSlot && instruction.operands[1].kind == IntegerSlot && instruction.operands[2].kind == Immediate) {
       append_slot_add_immediate(code, instruction.operands[0].slot, instruction.operands[1].slot, instruction.operands[2].immediate);
+    } else if (instruction.opcode == "sub" && instruction.operands[0].kind == IntegerSlot && instruction.operands[1].kind == IntegerSlot && instruction.operands[2].kind == Immediate) {
+      append_slot_sub_immediate(code, instruction.operands[0].slot, instruction.operands[1].slot, instruction.operands[2].immediate);
     } else if (instruction.opcode == "xor" && instruction.operands[0].kind == IntegerSlot && instruction.operands[1].kind == IntegerSlot && instruction.operands[2].kind == IntegerSlot) {
       append_slot_xor(code, instruction.operands[0].slot, instruction.operands[1].slot, instruction.operands[2].slot);
     } else if (instruction.opcode == "addr" && instruction.operands[0].kind == IntegerSlot && instruction.operands[1].kind == Label) {
       append_slot_immediate(code, instruction.operands[0].slot, 0);
       patches.push_back({code.size() - 8, instruction.operands[1].label});
+    } else if (instruction.opcode == "jmp" && instruction.operands[0].kind == Label) {
+      code.insert(code.end(), {0xe9, 0, 0, 0, 0});
+      branch_patches.push_back({code.size() - 4, instruction.operands[0].label});
+    } else if (instruction.opcode == "cjump" && instruction.operands[0].kind == IntegerSlot && instruction.operands[1].kind == Label) {
+      const std::uint8_t condition = slot_register(instruction.operands[0].slot);
+      code.insert(code.end(), {0x48, 0x85, static_cast<std::uint8_t>(0xc0 | (condition << 3) | condition), 0x0f, 0x85, 0, 0, 0, 0});
+      branch_patches.push_back({code.size() - 4, instruction.operands[1].label});
     } else if (instruction.opcode == "syscall") {
       const std::string &name = instruction.operands[0].label;
       const SyscallTemplate &syscall = syscall_template(target, name);
@@ -110,8 +139,20 @@ void emit_linux_x86_64_executable(const Program &program, const TargetConfig &ta
       code.insert(code.end(), exit.load_number.begin(), exit.load_number.end());
       code.insert(code.end(), exit.invoke.begin(), exit.invoke.end());
     } else {
-      throw std::runtime_error("the current direct-emission subset supports mov I[n], imm; add/xor; addr I[n], data; syscall primitive; and hlt");
+      throw std::runtime_error("the current direct-emission subset supports mov I[n], immediate arithmetic; xor; addr I[n], data; jmp/cjump; syscall primitive; and hlt");
     }
+  }
+  instruction_offsets.push_back(code.size());
+  for (const BranchPatch &patch : branch_patches) {
+    const auto label = program.labels.find(patch.symbol);
+    if (label == program.labels.end() || label->second >= instruction_offsets.size()) {
+      throw std::runtime_error("unknown branch label during direct emission: '" + patch.symbol + "'");
+    }
+    const std::int64_t displacement = static_cast<std::int64_t>(instruction_offsets[label->second]) - static_cast<std::int64_t>(patch.displacement_offset + 4);
+    if (displacement < std::numeric_limits<std::int32_t>::min() || displacement > std::numeric_limits<std::int32_t>::max()) {
+      throw std::runtime_error("branch target is outside the direct-emission rel32 range");
+    }
+    write_u32(code, patch.displacement_offset, static_cast<std::uint32_t>(static_cast<std::int32_t>(displacement)));
   }
 
   constexpr std::uint64_t base_address = 0x400000;

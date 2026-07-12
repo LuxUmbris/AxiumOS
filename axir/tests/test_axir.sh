@@ -53,4 +53,16 @@ status=$?
 set -e
 test "$status" -eq 29
 test "$output" = 'linked AXIR'
+./build/axirc emit tests/emit_loop.axir --target linux_x86_64 -o "$tmpdir/loop"
+set +e
+"$tmpdir/loop"
+status=$?
+set -e
+test "$status" -eq 41
+./build/axirc emit tests/emit_jump.axir --target linux_x86_64 -o "$tmpdir/jump"
+set +e
+"$tmpdir/jump"
+status=$?
+set -e
+test "$status" -eq 43
 printf 'AXIR tests passed\n'
