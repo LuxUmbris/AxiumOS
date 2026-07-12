@@ -1,0 +1,3 @@
+# `emit` must link and optimize before direct byte emission.
+mov I[0], I[0]
+hlt 19

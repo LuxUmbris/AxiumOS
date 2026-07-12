@@ -1,5 +1,6 @@
 #include "codegen.hpp"
 #include "emitter.hpp"
+#include "pipeline.hpp"
 
 #include <fstream>
 #include <iostream>
@@ -123,7 +124,8 @@ int main(int argc, char **argv) {
     if (command == "emit") {
       if (!target) throw std::runtime_error("emit requires --target <target_name>");
       if (output_path.empty()) throw std::runtime_error("emit requires -o <path>");
-      axir::emit_linux_x86_64_executable(program, *target, output_path);
+      const axir::Program linked = axir::link_modules({program});
+      axir::emit_linux_x86_64_executable(axir::optimize(linked), *target, output_path);
       std::cout << "AXIR native executable emitted: " << output_path << '\n';
       return 0;
     }

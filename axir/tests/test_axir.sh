@@ -31,4 +31,12 @@ else
   status=$?
   test "$status" -eq 37
 fi
+./build/axirc emit tests/emit_optimized_exit.axir --target linux_x86_64 -o "$tmpdir/exit19"
+if "$tmpdir/exit19"; then
+  echo "optimized direct ELF unexpectedly exited with status 0" >&2
+  exit 1
+else
+  status=$?
+  test "$status" -eq 19
+fi
 printf 'AXIR tests passed\n'
