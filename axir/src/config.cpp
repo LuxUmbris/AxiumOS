@@ -29,10 +29,10 @@ std::string scalar_value(const std::string &line, const std::string &key) {
   return trim(line.substr(prefix.size()));
 }
 
-std::vector<std::uint8_t> byte_sequence(const std::string &line) {
-  const std::size_t marker = line.find("bytes: [");
-  if (marker == std::string::npos) return {};
-  const std::size_t start = marker + 8;
+std::vector<std::uint8_t> byte_sequence(const std::string &line, const std::string &marker) {
+  const std::size_t position = line.find(marker);
+  if (position == std::string::npos) return {};
+  const std::size_t start = position + marker.size();
   const std::size_t end = line.find(']', start);
   if (end == std::string::npos) throw std::runtime_error("unterminated byte sequence in target configuration");
   std::vector<std::uint8_t> bytes;
@@ -67,6 +67,7 @@ TargetConfig load_target_config(std::string_view executable_path, std::string_vi
   std::vector<std::uint8_t> exit_status_prefix;
   std::vector<std::uint8_t> exit_number_sequence;
   std::vector<std::uint8_t> syscall_sequence;
+  std::vector<SyscallTemplate> syscalls;
   std::string schema;
   std::string name;
   bool encoding_section = false;
@@ -79,16 +80,22 @@ TargetConfig load_target_config(std::string_view executable_path, std::string_vi
     if (name.empty()) name = scalar_value(text, "name");
     if (text == "encoding:") encoding_section = true;
     if (encoding_section && text.find("bytes:") != std::string::npos) byte_template = true;
-    if (text.rfind("mov_edi_imm32:", 0) == 0) exit_status_prefix = byte_sequence(text);
-    if (text.rfind("mov_eax_exit:", 0) == 0) exit_number_sequence = byte_sequence(text);
-    if (text.rfind("syscall:", 0) == 0 && active_syscall == required_syscalls.size()) syscall_sequence = byte_sequence(text);
+    if (text.rfind("mov_edi_imm32:", 0) == 0) exit_status_prefix = byte_sequence(text, "bytes: [");
+    if (text.rfind("mov_eax_exit:", 0) == 0) exit_number_sequence = byte_sequence(text, "bytes: [");
+    if (text.rfind("syscall:", 0) == 0 && active_syscall == required_syscalls.size()) syscall_sequence = byte_sequence(text, "bytes: [");
     for (std::size_t index = 0; index < required_syscalls.size(); ++index) {
       if (text == "syscall " + std::string(required_syscalls[index]) + ":") {
         syscall_sections[index] = true;
         active_syscall = index;
+        syscalls.push_back({std::string(required_syscalls[index]), {}, {}});
       }
     }
-    if (active_syscall < required_syscalls.size() && text.rfind("bytes:", 0) == 0) syscall_bytes[active_syscall] = true;
+    if (active_syscall < required_syscalls.size() && text.rfind("bytes:", 0) == 0) {
+      syscall_bytes[active_syscall] = true;
+      SyscallTemplate &syscall = syscalls.back();
+      syscall.load_number = byte_sequence(text, "load_number: [");
+      syscall.invoke = byte_sequence(text, "invoke: [");
+    }
   }
 
   if (schema != "1") throw std::runtime_error("target configuration '" + path.string() + "' must declare schema_version: 1");
@@ -99,7 +106,7 @@ TargetConfig load_target_config(std::string_view executable_path, std::string_vi
     if (!syscall_sections[index]) throw std::runtime_error("target configuration '" + path.string() + "' is missing section 'syscall " + std::string(required_syscalls[index]) + "'");
     if (!syscall_bytes[index]) throw std::runtime_error("target configuration '" + path.string() + "' is missing bytes for 'syscall " + std::string(required_syscalls[index]) + "'");
   }
-  return {name, path, std::move(exit_status_prefix), std::move(exit_number_sequence), std::move(syscall_sequence)};
+  return {name, path, std::move(exit_status_prefix), std::move(exit_number_sequence), std::move(syscall_sequence), std::move(syscalls)};
 }
 
 } // namespace axir

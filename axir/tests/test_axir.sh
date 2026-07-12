@@ -39,4 +39,11 @@ else
   status=$?
   test "$status" -eq 19
 fi
+./build/axirc emit tests/emit_write.axir --target linux_x86_64 -o "$tmpdir/write"
+set +e
+output=$("$tmpdir/write")
+status=$?
+set -e
+test "$status" -eq 23
+test "$output" = 'direct byte syscall'
 printf 'AXIR tests passed\n'

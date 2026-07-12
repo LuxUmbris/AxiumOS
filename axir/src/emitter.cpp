@@ -31,20 +31,108 @@ void append_exit_code(std::vector<std::uint8_t> &code, std::uint64_t value, cons
   code.insert(code.end(), target.syscall_sequence.begin(), target.syscall_sequence.end());
 }
 
+const SyscallTemplate &syscall_template(const TargetConfig &target, std::string_view name) {
+  for (const SyscallTemplate &syscall : target.syscalls) {
+    if (syscall.name == name) return syscall;
+  }
+  throw std::runtime_error("target '" + target.name + "' has no syscall template for '" + std::string(name) + "'");
+}
+
+std::uint8_t slot_register(std::uint64_t slot) {
+  if (slot == 0) return 7;
+  if (slot == 1) return 6;
+  if (slot == 2) return 2;
+  throw std::runtime_error("the direct-emission stage supports integer slots I[0] through I[2]");
+}
+
+void append_slot_immediate(std::vector<std::uint8_t> &code, std::uint64_t slot, std::uint64_t value) {
+  code.push_back(0x48);
+  code.push_back(static_cast<std::uint8_t>(0xb8 + slot_register(slot)));
+  append_u64(code, value);
+}
+
+void append_slot_move(std::vector<std::uint8_t> &code, std::uint64_t destination, std::uint64_t source) {
+  code.insert(code.end(), {0x48, 0x89, static_cast<std::uint8_t>(0xc0 | (slot_register(source) << 3) | slot_register(destination))});
+}
+
+void append_slot_add_immediate(std::vector<std::uint8_t> &code, std::uint64_t destination, std::uint64_t left, std::uint64_t immediate) {
+  if (immediate > std::numeric_limits<std::uint32_t>::max()) throw std::runtime_error("direct add immediate must fit in 32 bits");
+  append_slot_move(code, destination, left);
+  code.insert(code.end(), {0x48, 0x81, static_cast<std::uint8_t>(0xc0 | slot_register(destination))});
+  append_u32(code, static_cast<std::uint32_t>(immediate));
+}
+
+void append_slot_xor(std::vector<std::uint8_t> &code, std::uint64_t destination, std::uint64_t left, std::uint64_t right) {
+  append_slot_move(code, destination, left);
+  code.insert(code.end(), {0x48, 0x31, static_cast<std::uint8_t>(0xc0 | (slot_register(right) << 3) | slot_register(destination))});
+}
+
+void write_u64(std::vector<std::uint8_t> &code, std::size_t offset, std::uint64_t value) {
+  if (offset + 8 > code.size()) throw std::runtime_error("internal direct-emission relocation error");
+  for (unsigned shift = 0; shift < 64; shift += 8) code[offset + shift / 8] = static_cast<std::uint8_t>(value >> shift);
+}
+
+std::size_t align_up(std::size_t value, std::size_t alignment) {
+  return (value + alignment - 1) / alignment * alignment;
+}
+
 } // namespace
 
 void emit_linux_x86_64_executable(const Program &program, const TargetConfig &target, const std::filesystem::path &output_path) {
   if (target.name != "linux_x86_64") throw std::runtime_error("direct executable emission currently requires the linux_x86_64 target");
-  if (program.instructions.size() != 1 || program.instructions.front().opcode != "hlt" || program.instructions.front().operands.front().kind != OperandKind::Immediate) {
-    throw std::runtime_error("the first direct-emission stage accepts exactly one 'hlt <immediate>' instruction");
-  }
 
+  struct DataPatch {
+    std::size_t code_offset;
+    std::string symbol;
+  };
   std::vector<std::uint8_t> code;
-  append_exit_code(code, program.instructions.front().operands.front().immediate, target);
+  std::vector<DataPatch> patches;
+  for (const Instruction &instruction : program.instructions) {
+    if (instruction.opcode == "mov" && instruction.operands[0].kind == IntegerSlot && instruction.operands[1].kind == Immediate) {
+      append_slot_immediate(code, instruction.operands[0].slot, instruction.operands[1].immediate);
+    } else if (instruction.opcode == "add" && instruction.operands[0].kind == IntegerSlot && instruction.operands[1].kind == IntegerSlot && instruction.operands[2].kind == Immediate) {
+      append_slot_add_immediate(code, instruction.operands[0].slot, instruction.operands[1].slot, instruction.operands[2].immediate);
+    } else if (instruction.opcode == "xor" && instruction.operands[0].kind == IntegerSlot && instruction.operands[1].kind == IntegerSlot && instruction.operands[2].kind == IntegerSlot) {
+      append_slot_xor(code, instruction.operands[0].slot, instruction.operands[1].slot, instruction.operands[2].slot);
+    } else if (instruction.opcode == "addr" && instruction.operands[0].kind == IntegerSlot && instruction.operands[1].kind == Label) {
+      append_slot_immediate(code, instruction.operands[0].slot, 0);
+      patches.push_back({code.size() - 8, instruction.operands[1].label});
+    } else if (instruction.opcode == "syscall") {
+      const std::string &name = instruction.operands[0].label;
+      const SyscallTemplate &syscall = syscall_template(target, name);
+      if (syscall.load_number.empty() || syscall.invoke.empty()) throw std::runtime_error("direct emission requires a primitive byte template for syscall '" + name + "'");
+      code.insert(code.end(), syscall.load_number.begin(), syscall.load_number.end());
+      code.insert(code.end(), syscall.invoke.begin(), syscall.invoke.end());
+    } else if (instruction.opcode == "hlt" && instruction.operands[0].kind == Immediate) {
+      append_exit_code(code, instruction.operands[0].immediate, target);
+    } else if (instruction.opcode == "hlt" && instruction.operands[0].kind == IntegerSlot && instruction.operands[0].slot == 0) {
+      const SyscallTemplate &exit = syscall_template(target, "exit");
+      code.insert(code.end(), exit.load_number.begin(), exit.load_number.end());
+      code.insert(code.end(), exit.invoke.begin(), exit.invoke.end());
+    } else {
+      throw std::runtime_error("the current direct-emission subset supports mov I[n], imm; add/xor; addr I[n], data; syscall primitive; and hlt");
+    }
+  }
 
   constexpr std::uint64_t base_address = 0x400000;
   constexpr std::size_t code_offset = 0x1000;
-  const std::uint64_t image_size = code_offset + code.size();
+  const std::size_t data_offset = align_up(code_offset + code.size(), 16);
+  std::size_t data_size = 0;
+  for (const DataObject &data : program.data) data_size += data.bytes.size();
+  for (const DataPatch &patch : patches) {
+    std::size_t relative_offset = 0;
+    bool found = false;
+    for (const DataObject &data : program.data) {
+      if (data.name == patch.symbol) {
+        write_u64(code, patch.code_offset, base_address + data_offset + relative_offset);
+        found = true;
+        break;
+      }
+      relative_offset += data.bytes.size();
+    }
+    if (!found) throw std::runtime_error("unknown static data symbol during direct emission: '" + patch.symbol + "'");
+  }
+  const std::uint64_t image_size = data_offset + data_size;
   std::vector<std::uint8_t> image;
   image.reserve(static_cast<std::size_t>(image_size));
 
@@ -76,6 +164,8 @@ void emit_linux_x86_64_executable(const Program &program, const TargetConfig &ta
   if (image.size() != 120) throw std::runtime_error("internal ELF header size error");
   image.resize(code_offset, 0);
   image.insert(image.end(), code.begin(), code.end());
+  image.resize(data_offset, 0);
+  for (const DataObject &data : program.data) image.insert(image.end(), data.bytes.begin(), data.bytes.end());
 
   std::ofstream output(output_path, std::ios::binary | std::ios::trunc);
   if (!output) throw std::runtime_error("cannot create executable '" + output_path.string() + "'");

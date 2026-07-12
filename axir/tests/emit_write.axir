@@ -1,0 +1,11 @@
+# Native direct-ELF static data relocation and named Linux syscall proof.
+data greeting: "direct byte syscall\n"
+xor I[0], I[0], I[0]
+add I[0], I[0], 1
+addr I[1], greeting
+xor I[2], I[2], I[2]
+add I[2], I[2], 20
+syscall write
+xor I[0], I[0], I[0]
+add I[0], I[0], 23
+syscall exit
