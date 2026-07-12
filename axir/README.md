@@ -10,7 +10,7 @@ make
 ./build.sh
 ```
 
-Both entry points build `build/axirc` with a C++17 compiler.
+Both entry points build `build/axirc` with a C++17 compiler. They also place every source target configuration beside the binary at `build/targets/<target_name>.yml`; the first target is `build/targets/linux_x86_64.yml`.
 
 ## Design rules
 

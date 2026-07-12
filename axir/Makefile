@@ -1,4 +1,6 @@
 TARGET := build/axirc
+TARGET_DIRECTORY := build/targets
+TARGET_CONFIGS := $(wildcard targets/*.yml)
 SOURCES := $(wildcard src/*.cpp)
 HEADERS := $(wildcard include/*.hpp)
 CPPFLAGS := -Iinclude
@@ -13,9 +15,10 @@ build: $(TARGET)
 
 cross-platform: build
 
-$(TARGET): $(SOURCES) $(HEADERS)
-	mkdir -p build
-			$(CXX) $(SOURCES) $(CPPFLAGS) -o $(TARGET) $(CXXFLAGS)
+$(TARGET): $(SOURCES) $(HEADERS) $(TARGET_CONFIGS)
+	mkdir -p $(TARGET_DIRECTORY)
+	$(CXX) $(SOURCES) $(CPPFLAGS) -o $(TARGET) $(CXXFLAGS)
+	cp $(TARGET_CONFIGS) $(TARGET_DIRECTORY)/
 
 clean:
 	rm -rf build

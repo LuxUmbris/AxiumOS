@@ -1,0 +1,137 @@
+schema_version: 1
+
+# A target is selected by name as: ./targets/<target_name>.yml
+name: linux_x86_64
+description: Linux x86-64 System V ELF target for the AXIR bootstrap path.
+
+platform:
+  architecture: x86_64
+  operating_system: linux
+  executable_format: elf64
+  endianness: little
+  machine_word_bits: 64
+  page_size: 4096
+
+abi:
+  calling_convention: system_v_amd64
+  stack_alignment_bytes: 16
+  integer_argument_registers: [rdi, rsi, rdx, rcx, r8, r9]
+  floating_argument_registers: [xmm0, xmm1, xmm2, xmm3, xmm4, xmm5, xmm6, xmm7]
+  integer_return_register: rax
+  floating_return_register: xmm0
+  stack_pointer_register: rsp
+  frame_pointer_register: rbp
+  instruction_pointer_register: rip
+  caller_saved_registers: [rax, rcx, rdx, rsi, rdi, r8, r9, r10, r11, xmm0, xmm1, xmm2, xmm3, xmm4, xmm5, xmm6, xmm7, xmm8, xmm9, xmm10, xmm11, xmm12, xmm13, xmm14, xmm15]
+  callee_saved_registers: [rbx, rbp, r12, r13, r14, r15]
+
+elf:
+  file_type: ET_EXEC
+  machine: EM_X86_64
+  entry_symbol: _start
+  base_virtual_address: 4194304
+  text_section_alignment: 16
+  data_section_alignment: 16
+  bss_section_alignment: 16
+
+integer_register_class:
+  allocatable: [rax, rbx, rcx, rdx, rsi, rdi, r8, r9, r10, r11, r12, r13, r14, r15]
+  scratch: [rax, rcx, rdx, r10, r11]
+
+floating_register_class:
+  allocatable: [xmm0, xmm1, xmm2, xmm3, xmm4, xmm5, xmm6, xmm7, xmm8, xmm9, xmm10, xmm11, xmm12, xmm13, xmm14, xmm15]
+  scratch: [xmm14, xmm15]
+
+immediates:
+  signed_bits: [8, 32, 64]
+  unsigned_bits: [8, 32, 64]
+  branch_relative_bits: 32
+  relocations:
+    absolute_64: R_X86_64_64
+    pc_relative_32: R_X86_64_PC32
+
+instruction_lowering:
+  integer_arithmetic:
+    add: add_r64_r64_or_imm
+    sub: sub_r64_r64_or_imm
+    mul: imul_r64_r64_or_imm
+    divs: idiv_r64
+    divu: div_r64
+    mods: idiv_or_div_remainder_rdx
+    mov: mov_r64_r64
+  bitwise:
+    and: and_r64_r64_or_imm
+    or: or_r64_r64_or_imm
+    xor: xor_r64_r64_or_imm
+    shl: shl_r64_cl_or_imm8
+    shrl: shr_r64_cl_or_imm8
+    shra: sar_r64_cl_or_imm8
+  comparisons:
+    integer: cmp_r64_r64_or_imm_then_setcc
+    floating: ucomis_then_setcc
+  floating:
+    addf: addsd_xmm_xmm
+    subf: subsd_xmm_xmm
+    mulf: mulsd_xmm_xmm
+    divf: divsd_xmm_xmm
+    movf: movsd_xmm_xmm
+    itof: cvtsi2sd_xmm_r64
+    ftoi: cvttsd2si_r64_xmm
+  memory:
+    load8u: movzx_r64_m8
+    load8s: movsx_r64_m8
+    load16u: movzx_r64_m16
+    load16s: movsx_r64_m16
+    load32u: mov_r32_m32
+    load32s: movsxd_r64_m32
+    load64: mov_r64_m64
+    store8: mov_m8_r8
+    store16: mov_m16_r16
+    store32: mov_m32_r32
+    store64: mov_m64_r64
+    loadf32: movss_xmm_m32
+    loadf64: movsd_xmm_m64
+    storef32: movss_m32_xmm
+    storef64: movsd_m64_xmm
+  control_flow:
+    jump: jmp_rel32
+    conditional_jump: test_r64_r64_then_jne_rel32
+    direct_call: call_rel32
+    indirect_call: call_r64
+    return: ret
+    halt: mov_edi_exit_code_then_sys_exit
+
+syscalls:
+  convention: linux_x86_64
+  number_register: rax
+  argument_registers: [rdi, rsi, rdx, r10, r8, r9]
+  results:
+    success: rax
+    error: negative_errno_in_rax
+  direct:
+    read: 0
+    write: 1
+    open: 2
+    close: 3
+    seek: 8
+    stat: 4
+    remove: 87
+    mkdir: 83
+    rmdir: 84
+    time: 201
+    sleep: 35
+    exit: 60
+  composite:
+    read_file: [open, read, close]
+    write_file: [open, write, close]
+
+runtime_contract:
+  input_path_argument: argv[1]
+  output_path_argument: argv[2]
+  source_encoding: utf-8
+  exit_status_zero: success
+  exit_status_nonzero: compilation_or_runtime_error
+  note: >-
+    The backend must generate ELF headers, program headers, section layout,
+    relocations, and syscall argument marshalling directly. No external
+    assembler or linker is permitted.
