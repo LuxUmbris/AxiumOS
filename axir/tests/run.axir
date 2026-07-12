@@ -1,0 +1,32 @@
+# Reference-interpreter integration program.
+data scratch: reserve 16
+
+main:
+  addr I[0], scratch
+  add I[1], I[0], 127
+  store8 I[0], I[1]
+  load8u I[2], I[0]
+  cmp_eq I[3], I[2], 127
+  cjump I[3], signed_test
+  hlt 10
+
+signed_test:
+  sub I[4], I[2], 128
+  shra I[5], I[4], 1
+  cmp_lts I[6], I[5], 0
+  cjump I[6], float_test
+  hlt 11
+
+float_test:
+  itof F[0], I[2]
+  itof F[1], I[2]
+  addf F[2], F[0], F[1]
+  add I[7], I[0], 8
+  storef64 I[7], F[2]
+  loadf64 F[3], I[7]
+  cmp_eqf I[8], F[2], F[3]
+  cjump I[8], done
+  hlt 12
+
+done:
+  hlt 0

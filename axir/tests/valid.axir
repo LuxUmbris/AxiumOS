@@ -1,0 +1,71 @@
+# Validation coverage for the complete v1.0 instruction vocabulary.
+data greeting: "hello\n", 0
+data workspace: reserve 32
+
+func callee, I[10], F[10]
+  ret_void
+
+func main
+  addr I[0], greeting
+  load8 I[1], I[0]
+  load16 I[2], I[0]
+  load32 I[3], I[0]
+  load64 I[4], I[0]
+  load8u I[5], I[0]
+  load16u I[6], I[0]
+  load32u I[7], I[0]
+  load8s I[8], I[0]
+  load16s I[9], I[0]
+  load32s I[10], I[0]
+  store8 I[0], I[1]
+  store16 I[0], I[2]
+  store32 I[0], I[3]
+  store64 I[0], I[4]
+  loadf32 F[0], I[0]
+  loadf64 F[1], I[0]
+  storef32 I[0], F[0]
+  storef64 I[0], F[1]
+  add I[1], I[0], 1
+  sub I[2], I[1], I[0]
+  mul I[3], I[2], 2
+  divs I[4], I[3], I[2]
+  divu I[5], I[4], 1
+  mods I[6], I[5], 2
+  modu I[7], I[6], 1
+  mov I[8], I[7]
+  and I[9], I[8], 1
+  or I[10], I[9], I[8]
+  xor I[11], I[10], 3
+  shl I[12], I[11], 1
+  shrl I[13], I[12], I[11]
+  shra I[14], I[13], 1
+  addf F[2], F[0], F[1]
+  subf F[3], F[2], F[0]
+  mulf F[4], F[3], F[1]
+  divf F[5], F[4], F[1]
+  movf F[6], F[5]
+  itof F[7], I[14]
+  ftoi I[15], F[7]
+  cmp_eq I[16], I[15], I[14]
+  cmp_ne I[17], I[15], 0
+  cmp_lts I[18], I[15], 1
+  cmp_gts I[19], I[15], 1
+  cmp_les I[20], I[15], 1
+  cmp_ges I[21], I[15], 1
+  cmp_ltu I[22], I[15], 1
+  cmp_gtu I[23], I[15], 1
+  cmp_leu I[24], I[15], 1
+  cmp_geu I[25], I[15], 1
+  cmp_eqf I[26], F[0], F[1]
+  cmp_nef I[27], F[0], F[1]
+  cmp_ltf I[28], F[0], F[1]
+  cmp_gtf I[29], F[0], F[1]
+  cmp_lef I[30], F[0], F[1]
+  cmp_gef I[31], F[0], F[1]
+  cjump I[16], branch
+  jmp branch
+branch:
+  call callee, I[0], F[0]
+  call_ptr I[0], I[1], F[1]
+  syscall backend_extension
+  ret I[0]

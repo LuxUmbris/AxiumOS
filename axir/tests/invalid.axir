@@ -1,0 +1,2 @@
+# A float destination is illegal for integer add.
+add F[0], I[0], 1
