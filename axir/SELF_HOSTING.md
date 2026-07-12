@@ -14,7 +14,7 @@ AXIR is self-hosted only when an AXIR-language implementation can accept AXIR so
 ## Required stages
 
 1. **Host target contract**
-   - Add a concrete `target.yml` for one host architecture.
+   - The first configuration is `axir/targets/linux_x86_64.yml`, selected as `linux_x86_64` through `./targets/<target_name>.yml`.
    - Define the integer/FP ABI, file/input mechanism, syscall encodings, data layout, executable format, and entry point.
    - Implement the same contract in the C++ bootstrap branch so it can execute the first AXIR self-host binary.
 
@@ -39,8 +39,8 @@ AXIR is self-hosted only when an AXIR-language implementation can accept AXIR so
 
 Stage 0 is complete: the C++ bootstrap snapshot is committed on `bootstrap`.
 
-Stages 1–5 are not implemented. The v1.0 specification deliberately leaves syscall mappings, executable format, ABI, target instruction encodings, and target mapping files backend-defined. A real self-host implementation cannot be honestly produced until the first concrete target contract is selected.
+Stage 1 has a concrete Linux x86-64 ELF target configuration, but its backend, ELF writer, and bootstrap execution support are not implemented yet. Stages 2–5 are not implemented. The target configuration is a contract, not a substitute for the required AXIR-written frontend, linker, backend, and fixed-point rebuild.
 
-## First implementation decision needed
+## Next implementation milestone
 
-Choose the first host target mapping (for example, Linux x86-64 ELF, Windows x86-64 PE, or another concrete target). The target must define the full data needed by the AXIR v1.0 `Backend Mapping` section before Stage 1 implementation begins.
+Implement the Linux x86-64 ELF backend described by `targets/linux_x86_64.yml` in the bootstrap, then use it to execute AXIR runtime-substrate programs. The self-hosted compiler source can begin only after that bootstrap execution contract is verified.
