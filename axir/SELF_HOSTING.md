@@ -2,7 +2,7 @@
 
 ## Branch roles
 
-- `bootstrap` (`ab50c51`) contains the working C++ AXIR implementation. It is the trusted bootstrap only.
+- `bootstrap` contains the working C++ AXIR implementation. It is the trusted bootstrap only.
 - `main` is reserved for the AXIR-written self-hosted implementation and its specifications.
 
 The AXIR v1.0 specification is tracked on `main` at `axir/AXIR_SPEC_v1.0.md` so that the self-hosted source has a stable, branch-local source of truth.
@@ -27,8 +27,9 @@ AXIR is self-hosted only when an AXIR-language implementation can accept AXIR so
    - Verify valid and invalid fixtures against the v1.0 specification.
 
 4. **AXIR backend**
-   - Implement code emission for the concrete host `target.yml`.
-   - Emit and run a standalone AXIR compiler artifact without an external assembler or linker.
+   - Parse → validate → link all units → optimize the linked program → expand target byte templates → write the executable image directly.
+   - Emit a standalone executable binary by writing ELF bytes internally. Never emit assembly text and never invoke an external assembler or linker.
+   - Object, static-library, and dynamic-library output are optional later modes; executable binary emission is the standard mode.
 
 5. **Fixed-point rebuild**
    - Build the AXIR compiler with the C++ bootstrap.
@@ -39,7 +40,7 @@ AXIR is self-hosted only when an AXIR-language implementation can accept AXIR so
 
 Stage 0 is complete: the C++ bootstrap snapshot is committed on `bootstrap`.
 
-Stage 1 has a concrete Linux x86-64 ELF target configuration, but its backend, ELF writer, and bootstrap execution support are not implemented yet. Stages 2–5 are not implemented. The target configuration is a contract, not a substitute for the required AXIR-written frontend, linker, backend, and fixed-point rebuild.
+Stage 1 has a concrete Linux x86-64 ELF target configuration with direct machine-code byte templates. The bootstrap resolves it only from `./targets/<target_name>.yml` beside its binary and does so without a YAML library or any other runtime dependency. Its backend, linker/optimizer, ELF writer, and bootstrap execution support are not implemented yet. Stages 2–5 are not implemented. The target configuration is a contract, not a substitute for the required AXIR-written frontend, linker, backend, and fixed-point rebuild.
 
 ## Next implementation milestone
 
