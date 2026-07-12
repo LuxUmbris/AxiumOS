@@ -46,4 +46,11 @@ status=$?
 set -e
 test "$status" -eq 23
 test "$output" = 'direct byte syscall'
+./build/axirc emit tests/emit_link_data.axir tests/emit_link_code.axir --target linux_x86_64 -o "$tmpdir/linked"
+set +e
+output=$("$tmpdir/linked")
+status=$?
+set -e
+test "$status" -eq 29
+test "$output" = 'linked AXIR'
 printf 'AXIR tests passed\n'

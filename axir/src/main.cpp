@@ -8,12 +8,14 @@
 #include <optional>
 #include <sstream>
 #include <string>
+#include <vector>
 
 namespace {
 
 void usage(const char *argv0) {
   std::cerr << "Usage: " << argv0 << " target <target_name>\n"
-            << "       " << argv0 << " <check|run|dump|emit> <program.axir> [options]\n"
+            << "       " << argv0 << " emit <program.axir> [more.axir ...] [options]\n"
+            << "       " << argv0 << " <check|run|dump> <program.axir> [options]\n"
             << "       " << argv0 << " <program.axir>  # same as check\n\n"
             << "Options:\n"
             << "  --target <target_name>  Load ./targets/<target_name>.yml beside axirc\n"
@@ -98,7 +100,14 @@ int main(int argc, char **argv) {
       return 2;
     }
 
-    const std::string source_path = argv[arg++];
+    std::vector<std::string> source_paths;
+    while (arg < argc && argv[arg][0] != '-') source_paths.emplace_back(argv[arg++]);
+    if (source_paths.empty()) {
+      usage(argv[0]);
+      return 2;
+    }
+    if (command != "emit" && source_paths.size() != 1) throw std::runtime_error(command + " accepts exactly one AXIR source file");
+
     axir::RunConfig run_config;
     std::string target_name;
     std::string output_path;
@@ -106,12 +115,18 @@ int main(int argc, char **argv) {
     std::optional<axir::TargetConfig> target;
     if (!target_name.empty()) target = axir::load_target_config(argv[0], target_name);
 
-    std::ifstream input(source_path, std::ios::binary);
-    if (!input) throw std::runtime_error("cannot open '" + source_path + "'");
-    std::ostringstream source;
-    source << input.rdbuf();
-    axir::Program program = axir::parse(axir::tokenize(source.str()));
-    axir::validate(program);
+    std::vector<axir::Program> modules;
+    modules.reserve(source_paths.size());
+    for (const std::string &source_path : source_paths) {
+      std::ifstream input(source_path, std::ios::binary);
+      if (!input) throw std::runtime_error("cannot open '" + source_path + "'");
+      std::ostringstream source;
+      source << input.rdbuf();
+      axir::Program program = axir::parse(axir::tokenize(source.str()));
+      if (command != "emit") axir::validate(program);
+      modules.push_back(std::move(program));
+    }
+    const axir::Program &program = modules.front();
     if (command == "dump") {
       std::cout << axir::dump(program);
       return 0;
@@ -124,7 +139,7 @@ int main(int argc, char **argv) {
     if (command == "emit") {
       if (!target) throw std::runtime_error("emit requires --target <target_name>");
       if (output_path.empty()) throw std::runtime_error("emit requires -o <path>");
-      const axir::Program linked = axir::link_modules({program});
+      const axir::Program linked = axir::link_modules(modules);
       axir::emit_linux_x86_64_executable(axir::optimize(linked), *target, output_path);
       std::cout << "AXIR native executable emitted: " << output_path << '\n';
       return 0;

@@ -1,0 +1,9 @@
+xor I[0], I[0], I[0]
+add I[0], I[0], 1
+addr I[1], greeting
+xor I[2], I[2], I[2]
+add I[2], I[2], 12
+syscall write
+xor I[0], I[0], I[0]
+add I[0], I[0], 29
+syscall exit
