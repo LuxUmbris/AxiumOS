@@ -50,56 +50,76 @@ immediates:
     absolute_64: R_X86_64_64
     pc_relative_32: R_X86_64_PC32
 
-instruction_lowering:
-  integer_arithmetic:
-    add: add_r64_r64_or_imm
-    sub: sub_r64_r64_or_imm
-    mul: imul_r64_r64_or_imm
-    divs: idiv_r64
-    divu: div_r64
-    mods: idiv_or_div_remainder_rdx
-    mov: mov_r64_r64
-  bitwise:
-    and: and_r64_r64_or_imm
-    or: or_r64_r64_or_imm
-    xor: xor_r64_r64_or_imm
-    shl: shl_r64_cl_or_imm8
-    shrl: shr_r64_cl_or_imm8
-    shra: sar_r64_cl_or_imm8
+# Every opcode template contains bytes copied directly to the emitted ELF image.
+# `rex_modrm`, `opcode_plus_register`, `imm8`, `imm32`, `imm64`, and `rel32`
+# are byte fields filled by the internal backend; no assembly text is created.
+encoding:
+  template_fields: [rex_modrm, opcode_plus_register, imm8, imm32, imm64, rel32]
+  integer:
+    mov_r64_r64: {bytes: [0x48, 0x89], field: rex_modrm}
+    mov_r64_imm64: {bytes: [0x48, 0xb8], field: opcode_plus_register_imm64}
+    add_r64_r64: {bytes: [0x48, 0x01], field: rex_modrm}
+    sub_r64_r64: {bytes: [0x48, 0x29], field: rex_modrm}
+    imul_r64_r64: {bytes: [0x48, 0x0f, 0xaf], field: rex_modrm}
+    and_r64_r64: {bytes: [0x48, 0x21], field: rex_modrm}
+    or_r64_r64: {bytes: [0x48, 0x09], field: rex_modrm}
+    xor_r64_r64: {bytes: [0x48, 0x31], field: rex_modrm}
+    cmp_r64_r64: {bytes: [0x48, 0x39], field: rex_modrm}
+    test_r64_r64: {bytes: [0x48, 0x85], field: rex_modrm}
+    idiv_r64: {bytes: [0x48, 0xf7], field: rex_modrm_digit_7}
+    div_r64: {bytes: [0x48, 0xf7], field: rex_modrm_digit_6}
+    cqo: {bytes: [0x48, 0x99]}
+    xor_rdx_rdx: {bytes: [0x48, 0x31, 0xd2]}
+    shl_r64_cl: {bytes: [0x48, 0xd3], field: rex_modrm_digit_4}
+    shr_r64_cl: {bytes: [0x48, 0xd3], field: rex_modrm_digit_5}
+    sar_r64_cl: {bytes: [0x48, 0xd3], field: rex_modrm_digit_7}
   comparisons:
-    integer: cmp_r64_r64_or_imm_then_setcc
-    floating: ucomis_then_setcc
+    sete: {bytes: [0x0f, 0x94], field: rex_modrm}
+    setne: {bytes: [0x0f, 0x95], field: rex_modrm}
+    setl: {bytes: [0x0f, 0x9c], field: rex_modrm}
+    setg: {bytes: [0x0f, 0x9f], field: rex_modrm}
+    setle: {bytes: [0x0f, 0x9e], field: rex_modrm}
+    setge: {bytes: [0x0f, 0x9d], field: rex_modrm}
+    setb: {bytes: [0x0f, 0x92], field: rex_modrm}
+    seta: {bytes: [0x0f, 0x97], field: rex_modrm}
+    setbe: {bytes: [0x0f, 0x96], field: rex_modrm}
+    setae: {bytes: [0x0f, 0x93], field: rex_modrm}
   floating:
-    addf: addsd_xmm_xmm
-    subf: subsd_xmm_xmm
-    mulf: mulsd_xmm_xmm
-    divf: divsd_xmm_xmm
-    movf: movsd_xmm_xmm
-    itof: cvtsi2sd_xmm_r64
-    ftoi: cvttsd2si_r64_xmm
+    addsd: {bytes: [0xf2, 0x0f, 0x58], field: rex_modrm}
+    subsd: {bytes: [0xf2, 0x0f, 0x5c], field: rex_modrm}
+    mulsd: {bytes: [0xf2, 0x0f, 0x59], field: rex_modrm}
+    divsd: {bytes: [0xf2, 0x0f, 0x5e], field: rex_modrm}
+    movsd: {bytes: [0xf2, 0x0f, 0x10], field: rex_modrm}
+    cvtsi2sd: {bytes: [0xf2, 0x48, 0x0f, 0x2a], field: rex_modrm}
+    cvttsd2si: {bytes: [0xf2, 0x48, 0x0f, 0x2c], field: rex_modrm}
   memory:
-    load8u: movzx_r64_m8
-    load8s: movsx_r64_m8
-    load16u: movzx_r64_m16
-    load16s: movsx_r64_m16
-    load32u: mov_r32_m32
-    load32s: movsxd_r64_m32
-    load64: mov_r64_m64
-    store8: mov_m8_r8
-    store16: mov_m16_r16
-    store32: mov_m32_r32
-    store64: mov_m64_r64
-    loadf32: movss_xmm_m32
-    loadf64: movsd_xmm_m64
-    storef32: movss_m32_xmm
-    storef64: movsd_m64_xmm
+    load8u: {bytes: [0x48, 0x0f, 0xb6], field: rex_modrm}
+    load8s: {bytes: [0x48, 0x0f, 0xbe], field: rex_modrm}
+    load16u: {bytes: [0x48, 0x0f, 0xb7], field: rex_modrm}
+    load16s: {bytes: [0x48, 0x0f, 0xbf], field: rex_modrm}
+    load32u: {bytes: [0x8b], field: rex_modrm}
+    load32s: {bytes: [0x48, 0x63], field: rex_modrm}
+    load64: {bytes: [0x48, 0x8b], field: rex_modrm}
+    store8: {bytes: [0x88], field: rex_modrm}
+    store16: {bytes: [0x66, 0x89], field: rex_modrm}
+    store32: {bytes: [0x89], field: rex_modrm}
+    store64: {bytes: [0x48, 0x89], field: rex_modrm}
+    loadf32: {bytes: [0xf3, 0x0f, 0x10], field: rex_modrm}
+    loadf64: {bytes: [0xf2, 0x0f, 0x10], field: rex_modrm}
+    storef32: {bytes: [0xf3, 0x0f, 0x11], field: rex_modrm}
+    storef64: {bytes: [0xf2, 0x0f, 0x11], field: rex_modrm}
   control_flow:
-    jump: jmp_rel32
-    conditional_jump: test_r64_r64_then_jne_rel32
-    direct_call: call_rel32
-    indirect_call: call_r64
-    return: ret
-    halt: mov_edi_exit_code_then_sys_exit
+    jmp_rel32: {bytes: [0xe9], field: rel32}
+    jne_rel32: {bytes: [0x0f, 0x85], field: rel32}
+    call_rel32: {bytes: [0xe8], field: rel32}
+    call_r64: {bytes: [0xff], field: rex_modrm_digit_2}
+    ret: {bytes: [0xc3]}
+    syscall: {bytes: [0x0f, 0x05]}
+    nop: {bytes: [0x90]}
+  process_exit:
+    mov_edi_imm32: {bytes: [0xbf], field: imm32}
+    mov_eax_exit: {bytes: [0xb8, 0x3c, 0x00, 0x00, 0x00]}
+    syscall: {bytes: [0x0f, 0x05]}
 
 syscalls:
   convention: linux_x86_64
