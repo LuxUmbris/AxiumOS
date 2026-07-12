@@ -345,9 +345,19 @@ hlt imm
 ```text
 syscall name
     Perform a symbolic system call. AXIR does not define syscall numbers or
-    calling conventions. The backend maps symbolic syscall names to actual
-    platform-specific syscall sequences.
+    calling conventions. The selected target configuration maps each symbolic
+    name to platform-specific byte sequences and a mandatory slot signature.
 ```
+
+For every required `syscall name`, the target configuration MUST contain a
+`syscall <name>` section with: the input `I[n]` slot for every argument, the
+result `I[n]` slot when there is one, exact syscall-number and invoke bytes,
+and the target's error and register-clobber convention. The caller writes
+argument values into the documented slots before the instruction and reads the
+documented result slot afterward. Linux x86-64 uses a non-negative result or a
+negative errno value; its composite `read_file` and `write_file` entries expand
+only to the primitive syscall sections. These sequences never call libc or any
+other external runtime.
 
 Required symbolic syscall names:
 
