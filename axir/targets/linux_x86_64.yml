@@ -128,6 +128,7 @@ syscall_abi:
   argument_registers: [rdi, rsi, rdx, r10, r8, r9]
   result_register: rax
   error_result: negative_errno_in_rax
+  clobber_registers: [rax, rcx, r11]
 
 # Each symbolic AXIR syscall has its own byte-level section. `load_number`
 # and `invoke` are copied into the native image by the internal backend.
