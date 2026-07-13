@@ -109,4 +109,10 @@ set +e
 status=$?
 set -e
 test "$status" -eq 12
+./build/axirc emit tests/emit_memory.axir --target linux_x86_64 -o "$tmpdir/memory"
+set +e
+"$tmpdir/memory"
+status=$?
+set -e
+test "$status" -eq 42
 printf 'AXIR tests passed\n'

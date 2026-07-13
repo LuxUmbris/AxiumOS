@@ -105,6 +105,29 @@ void append_slot_binary_immediate(std::vector<std::uint8_t> &code, const std::st
   append_store_slot(code, 0, destination);
 }
 
+void append_memory_access(std::vector<std::uint8_t> &code, const Instruction &instruction) {
+  if (instruction.opcode.rfind("load", 0) == 0) {
+    append_load_slot(code, 0, instruction.operands[1].slot);
+    if (instruction.opcode == "load8u") code.insert(code.end(), {0x48, 0x0f, 0xb6, 0x00});
+    else if (instruction.opcode == "load8s" || instruction.opcode == "load8") code.insert(code.end(), {0x48, 0x0f, 0xbe, 0x00});
+    else if (instruction.opcode == "load16u") code.insert(code.end(), {0x48, 0x0f, 0xb7, 0x00});
+    else if (instruction.opcode == "load16s" || instruction.opcode == "load16") code.insert(code.end(), {0x48, 0x0f, 0xbf, 0x00});
+    else if (instruction.opcode == "load32u" || instruction.opcode == "load32") code.insert(code.end(), {0x8b, 0x00});
+    else if (instruction.opcode == "load32s") code.insert(code.end(), {0x48, 0x63, 0x00});
+    else if (instruction.opcode == "load64") code.insert(code.end(), {0x48, 0x8b, 0x00});
+    else throw std::runtime_error("internal unsupported load opcode");
+    append_store_slot(code, 0, instruction.operands[0].slot);
+    return;
+  }
+  append_load_slot(code, 0, instruction.operands[0].slot);
+  append_load_slot(code, 3, instruction.operands[1].slot);
+  if (instruction.opcode == "store8") code.insert(code.end(), {0x88, 0x18});
+  else if (instruction.opcode == "store16") code.insert(code.end(), {0x66, 0x89, 0x18});
+  else if (instruction.opcode == "store32") code.insert(code.end(), {0x89, 0x18});
+  else if (instruction.opcode == "store64") code.insert(code.end(), {0x48, 0x89, 0x18});
+  else throw std::runtime_error("internal unsupported store opcode");
+}
+
 void append_slot_division(std::vector<std::uint8_t> &code, const std::string &opcode, std::uint64_t destination, std::uint64_t left, const Operand &right) {
   append_load_slot(code, 0, left);
   if (right.kind == IntegerSlot) append_load_slot(code, 3, right.slot);
@@ -232,6 +255,8 @@ void emit_linux_x86_64_executable(const Program &program, const TargetConfig &ta
       append_slot_binary_immediate(code, instruction.opcode, instruction.operands[0].slot, instruction.operands[1].slot, instruction.operands[2].immediate);
     } else if ((instruction.opcode == "add" || instruction.opcode == "sub" || instruction.opcode == "and" || instruction.opcode == "or" || instruction.opcode == "xor" || instruction.opcode == "mul" || instruction.opcode == "shl" || instruction.opcode == "shrl" || instruction.opcode == "shra") && instruction.operands[0].kind == IntegerSlot && instruction.operands[1].kind == IntegerSlot && instruction.operands[2].kind == IntegerSlot) {
       append_slot_binary_slots(code, instruction.opcode, instruction.operands[0].slot, instruction.operands[1].slot, instruction.operands[2].slot);
+    } else if ((instruction.opcode == "load8" || instruction.opcode == "load16" || instruction.opcode == "load32" || instruction.opcode == "load64" || instruction.opcode == "load8u" || instruction.opcode == "load16u" || instruction.opcode == "load32u" || instruction.opcode == "load8s" || instruction.opcode == "load16s" || instruction.opcode == "load32s" || instruction.opcode == "store8" || instruction.opcode == "store16" || instruction.opcode == "store32" || instruction.opcode == "store64") && instruction.operands[0].kind == IntegerSlot && instruction.operands[1].kind == IntegerSlot) {
+      append_memory_access(code, instruction);
     } else if ((instruction.opcode == "divs" || instruction.opcode == "divu" || instruction.opcode == "mods" || instruction.opcode == "modu") && instruction.operands[0].kind == IntegerSlot && instruction.operands[1].kind == IntegerSlot && (instruction.operands[2].kind == IntegerSlot || instruction.operands[2].kind == Immediate)) {
       append_slot_division(code, instruction.opcode, instruction.operands[0].slot, instruction.operands[1].slot, instruction.operands[2]);
     } else if ((instruction.opcode == "cmp_eq" || instruction.opcode == "cmp_ne" || instruction.opcode == "cmp_lts" || instruction.opcode == "cmp_gts" || instruction.opcode == "cmp_les" || instruction.opcode == "cmp_ges" || instruction.opcode == "cmp_ltu" || instruction.opcode == "cmp_gtu" || instruction.opcode == "cmp_leu" || instruction.opcode == "cmp_geu") && instruction.operands[0].kind == IntegerSlot && instruction.operands[1].kind == IntegerSlot && (instruction.operands[2].kind == IntegerSlot || instruction.operands[2].kind == Immediate)) {
@@ -320,7 +345,7 @@ void emit_linux_x86_64_executable(const Program &program, const TargetConfig &ta
   append_u16(image, 0);
 
   append_u32(image, 1);
-  append_u32(image, 5);
+  append_u32(image, 7);
   append_u64(image, 0);
   append_u64(image, base_address);
   append_u64(image, base_address);

@@ -1,0 +1,7 @@
+data cell: reserve 8
+addr I[17], cell
+xor I[18], I[18], I[18]
+add I[18], I[18], 42
+store64 I[17], I[18]
+load64 I[19], I[17]
+hlt I[19]
