@@ -196,7 +196,17 @@ void validate(const Program &program) {
     else if (float_compare(op)) { count(in, 3); kind(in, 0, OperandKind::IntegerSlot); kind(in, 1, OperandKind::FloatSlot); kind(in, 2, OperandKind::FloatSlot); }
     else if (op == "jmp") { count(in, 1); label(in, 0, "jump label"); }
     else if (op == "cjump") { count(in, 2); kind(in, 0, OperandKind::IntegerSlot); label(in, 1, "jump label"); }
-    else if (op == "call") { if (in.operands.empty()) fail(in.line, "call expects a target"); label(in, 0, "call target"); for (std::size_t i = 1; i < in.operands.size(); ++i) if (in.operands[i].kind != OperandKind::IntegerSlot && in.operands[i].kind != OperandKind::FloatSlot) fail(in.line, "call arguments must be slots"); }
+    else if (op == "call") {
+      if (in.operands.empty()) fail(in.line, "call expects a target");
+      label(in, 0, "call target");
+      const auto function = program.functions.find(in.operands[0].label);
+      if (function == program.functions.end()) fail(in.line, "call target must be a declared function");
+      if (in.operands.size() - 1 != function->second.parameters.size()) fail(in.line, "call argument count does not match function parameters");
+      for (std::size_t i = 1; i < in.operands.size(); ++i) {
+        if (in.operands[i].kind != OperandKind::IntegerSlot && in.operands[i].kind != OperandKind::FloatSlot) fail(in.line, "call arguments must be slots");
+        if (in.operands[i].kind != function->second.parameters[i - 1].kind) fail(in.line, "call argument slot class does not match function parameter");
+      }
+    }
     else if (op == "call_ptr") { if (in.operands.empty()) fail(in.line, "call_ptr expects a target slot"); kind(in, 0, OperandKind::IntegerSlot); for (std::size_t i = 1; i < in.operands.size(); ++i) if (in.operands[i].kind != OperandKind::IntegerSlot && in.operands[i].kind != OperandKind::FloatSlot) fail(in.line, "call_ptr arguments must be slots"); }
     else if (op == "ret" || op == "hlt") { count(in, 1); int_or_imm(in, 0); }
     else if (op == "ret_void") count(in, 0);
