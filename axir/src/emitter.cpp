@@ -38,52 +38,61 @@ const SyscallTemplate &syscall_template(const TargetConfig &target, std::string_
   throw std::runtime_error("target '" + target.name + "' has no syscall template for '" + std::string(name) + "'");
 }
 
-std::uint8_t slot_register(std::uint64_t slot) {
-  if (slot == 0) return 7;
-  if (slot == 1) return 6;
-  if (slot == 2) return 2;
-  throw std::runtime_error("the direct-emission stage supports integer slots I[0] through I[2]");
+std::uint32_t slot_offset(std::uint64_t slot) {
+  if (slot > std::numeric_limits<std::uint32_t>::max() / 8) throw std::runtime_error("integer slot is outside the direct-emission stack frame range");
+  return static_cast<std::uint32_t>(slot * 8);
+}
+
+void append_load_slot(std::vector<std::uint8_t> &code, std::uint8_t register_code, std::uint64_t slot) {
+  code.insert(code.end(), {0x48, 0x8b, static_cast<std::uint8_t>(0x84 | (register_code << 3)), 0x24});
+  append_u32(code, slot_offset(slot));
+}
+
+void append_store_slot(std::vector<std::uint8_t> &code, std::uint8_t register_code, std::uint64_t slot) {
+  code.insert(code.end(), {0x48, 0x89, static_cast<std::uint8_t>(0x84 | (register_code << 3)), 0x24});
+  append_u32(code, slot_offset(slot));
 }
 
 void append_slot_immediate(std::vector<std::uint8_t> &code, std::uint64_t slot, std::uint64_t value) {
-  code.push_back(0x48);
-  code.push_back(static_cast<std::uint8_t>(0xb8 + slot_register(slot)));
+  code.insert(code.end(), {0x48, 0xb8});
   append_u64(code, value);
-}
-
-void append_slot_move(std::vector<std::uint8_t> &code, std::uint64_t destination, std::uint64_t source) {
-  code.insert(code.end(), {0x48, 0x89, static_cast<std::uint8_t>(0xc0 | (slot_register(source) << 3) | slot_register(destination))});
+  append_store_slot(code, 0, slot);
 }
 
 void append_slot_add_immediate(std::vector<std::uint8_t> &code, std::uint64_t destination, std::uint64_t left, std::uint64_t immediate) {
   if (immediate > std::numeric_limits<std::uint32_t>::max()) throw std::runtime_error("direct arithmetic immediate must fit in 32 bits");
-  append_slot_move(code, destination, left);
-  code.insert(code.end(), {0x48, 0x81, static_cast<std::uint8_t>(0xc0 | slot_register(destination))});
+  append_load_slot(code, 0, left);
+  code.insert(code.end(), {0x48, 0x81, 0xc0});
   append_u32(code, static_cast<std::uint32_t>(immediate));
+  append_store_slot(code, 0, destination);
 }
 
 void append_slot_sub_immediate(std::vector<std::uint8_t> &code, std::uint64_t destination, std::uint64_t left, std::uint64_t immediate) {
   if (immediate > std::numeric_limits<std::uint32_t>::max()) throw std::runtime_error("direct arithmetic immediate must fit in 32 bits");
-  append_slot_move(code, destination, left);
-  code.insert(code.end(), {0x48, 0x81, static_cast<std::uint8_t>(0xe8 | slot_register(destination))});
+  append_load_slot(code, 0, left);
+  code.insert(code.end(), {0x48, 0x81, 0xe8});
   append_u32(code, static_cast<std::uint32_t>(immediate));
+  append_store_slot(code, 0, destination);
 }
 
 void append_slot_xor(std::vector<std::uint8_t> &code, std::uint64_t destination, std::uint64_t left, std::uint64_t right) {
-  append_slot_move(code, destination, left);
-  code.insert(code.end(), {0x48, 0x31, static_cast<std::uint8_t>(0xc0 | (slot_register(right) << 3) | slot_register(destination))});
+  append_load_slot(code, 0, left);
+  append_load_slot(code, 3, right);
+  code.insert(code.end(), {0x48, 0x31, 0xd8});
+  append_store_slot(code, 0, destination);
+}
+
+void append_syscall_arguments(std::vector<std::uint8_t> &code, const SyscallTemplate &syscall) {
+  constexpr std::uint8_t argument_registers[] = {7, 6, 2};
+  for (std::size_t index = 0; index < syscall.argument_slots.size(); ++index) append_load_slot(code, argument_registers[index], syscall.argument_slots[index]);
 }
 
 void append_syscall_result(std::vector<std::uint8_t> &code, std::uint64_t slot) {
-  code.insert(code.end(), {0x48, 0x89, static_cast<std::uint8_t>(0xc0 | slot_register(slot))});
+  append_store_slot(code, 0, slot);
 }
 
 void validate_direct_syscall_abi(const SyscallTemplate &syscall) {
   if (syscall.argument_slots.size() > 3) throw std::runtime_error("the current direct emitter supports at most three syscall arguments");
-  for (std::size_t index = 0; index < syscall.argument_slots.size(); ++index) {
-    if (syscall.argument_slots[index] != index) throw std::runtime_error("the current direct emitter requires syscall arguments to use ABI slots I[0..2]");
-  }
-  if (syscall.has_result_slot && syscall.result_slot != 0) throw std::runtime_error("the current direct emitter requires a syscall result in I[0]");
 }
 
 void write_u32(std::vector<std::uint8_t> &code, std::size_t offset, std::uint32_t value) {
@@ -100,6 +109,33 @@ std::size_t align_up(std::size_t value, std::size_t alignment) {
   return (value + alignment - 1) / alignment * alignment;
 }
 
+std::uint32_t stack_frame_size(const Program &program, const TargetConfig &target) {
+  std::uint64_t largest_slot = 0;
+  bool has_slot = false;
+  const auto observe = [&largest_slot, &has_slot](std::uint64_t slot) {
+    if (slot > static_cast<std::uint64_t>(std::numeric_limits<std::int32_t>::max() / 8 - 1)) {
+      throw std::runtime_error("integer slot frame is too large for direct emission");
+    }
+    if (!has_slot || slot > largest_slot) largest_slot = slot;
+    has_slot = true;
+  };
+  for (const Instruction &instruction : program.instructions) {
+    for (const Operand &operand : instruction.operands) {
+      if (operand.kind == IntegerSlot) observe(operand.slot);
+    }
+    if (instruction.opcode == "syscall") {
+      const SyscallTemplate &syscall = syscall_template(target, instruction.operands[0].label);
+      for (std::uint64_t slot : syscall.argument_slots) observe(slot);
+      if (syscall.has_result_slot) observe(syscall.result_slot);
+    }
+  }
+  const std::uint64_t bytes = has_slot ? (largest_slot + 1) * 8 : 0;
+  if (bytes > static_cast<std::uint64_t>(std::numeric_limits<std::int32_t>::max() - 15)) {
+    throw std::runtime_error("integer slot frame is too large for direct emission");
+  }
+  return static_cast<std::uint32_t>(align_up(static_cast<std::size_t>(bytes), 16));
+}
+
 } // namespace
 
 void emit_linux_x86_64_executable(const Program &program, const TargetConfig &target, const std::filesystem::path &output_path) {
@@ -114,6 +150,11 @@ void emit_linux_x86_64_executable(const Program &program, const TargetConfig &ta
     std::string symbol;
   };
   std::vector<std::uint8_t> code;
+  const std::uint32_t frame_size = stack_frame_size(program, target);
+  if (frame_size != 0) {
+    code.insert(code.end(), {0x48, 0x81, 0xec});
+    append_u32(code, frame_size);
+  }
   std::vector<DataPatch> patches;
   std::vector<BranchPatch> branch_patches;
   std::vector<std::size_t> instruction_offsets;
@@ -122,6 +163,9 @@ void emit_linux_x86_64_executable(const Program &program, const TargetConfig &ta
     instruction_offsets.push_back(code.size());
     if (instruction.opcode == "mov" && instruction.operands[0].kind == IntegerSlot && instruction.operands[1].kind == Immediate) {
       append_slot_immediate(code, instruction.operands[0].slot, instruction.operands[1].immediate);
+    } else if (instruction.opcode == "mov" && instruction.operands[0].kind == IntegerSlot && instruction.operands[1].kind == IntegerSlot) {
+      append_load_slot(code, 0, instruction.operands[1].slot);
+      append_store_slot(code, 0, instruction.operands[0].slot);
     } else if (instruction.opcode == "add" && instruction.operands[0].kind == IntegerSlot && instruction.operands[1].kind == IntegerSlot && instruction.operands[2].kind == Immediate) {
       append_slot_add_immediate(code, instruction.operands[0].slot, instruction.operands[1].slot, instruction.operands[2].immediate);
     } else if (instruction.opcode == "sub" && instruction.operands[0].kind == IntegerSlot && instruction.operands[1].kind == IntegerSlot && instruction.operands[2].kind == Immediate) {
@@ -129,28 +173,31 @@ void emit_linux_x86_64_executable(const Program &program, const TargetConfig &ta
     } else if (instruction.opcode == "xor" && instruction.operands[0].kind == IntegerSlot && instruction.operands[1].kind == IntegerSlot && instruction.operands[2].kind == IntegerSlot) {
       append_slot_xor(code, instruction.operands[0].slot, instruction.operands[1].slot, instruction.operands[2].slot);
     } else if (instruction.opcode == "addr" && instruction.operands[0].kind == IntegerSlot && instruction.operands[1].kind == Label) {
+      const std::size_t address_offset = code.size() + 2;
       append_slot_immediate(code, instruction.operands[0].slot, 0);
-      patches.push_back({code.size() - 8, instruction.operands[1].label});
+      patches.push_back({address_offset, instruction.operands[1].label});
     } else if (instruction.opcode == "jmp" && instruction.operands[0].kind == Label) {
       code.insert(code.end(), {0xe9, 0, 0, 0, 0});
       branch_patches.push_back({code.size() - 4, instruction.operands[0].label});
     } else if (instruction.opcode == "cjump" && instruction.operands[0].kind == IntegerSlot && instruction.operands[1].kind == Label) {
-      const std::uint8_t condition = slot_register(instruction.operands[0].slot);
-      code.insert(code.end(), {0x48, 0x85, static_cast<std::uint8_t>(0xc0 | (condition << 3) | condition), 0x0f, 0x85, 0, 0, 0, 0});
+      append_load_slot(code, 0, instruction.operands[0].slot);
+      code.insert(code.end(), {0x48, 0x85, 0xc0, 0x0f, 0x85, 0, 0, 0, 0});
       branch_patches.push_back({code.size() - 4, instruction.operands[1].label});
     } else if (instruction.opcode == "syscall") {
       const std::string &name = instruction.operands[0].label;
       const SyscallTemplate &syscall = syscall_template(target, name);
       if (syscall.load_number.empty() || syscall.invoke.empty()) throw std::runtime_error("direct emission requires a primitive byte template for syscall '" + name + "'");
       validate_direct_syscall_abi(syscall);
+      append_syscall_arguments(code, syscall);
       code.insert(code.end(), syscall.load_number.begin(), syscall.load_number.end());
       code.insert(code.end(), syscall.invoke.begin(), syscall.invoke.end());
       if (syscall.has_result_slot) append_syscall_result(code, syscall.result_slot);
     } else if (instruction.opcode == "hlt" && instruction.operands[0].kind == Immediate) {
       append_exit_code(code, instruction.operands[0].immediate, target);
-    } else if (instruction.opcode == "hlt" && instruction.operands[0].kind == IntegerSlot && instruction.operands[0].slot == 0) {
+    } else if (instruction.opcode == "hlt" && instruction.operands[0].kind == IntegerSlot) {
       const SyscallTemplate &exit = syscall_template(target, "exit");
       validate_direct_syscall_abi(exit);
+      append_load_slot(code, 7, instruction.operands[0].slot);
       code.insert(code.end(), exit.load_number.begin(), exit.load_number.end());
       code.insert(code.end(), exit.invoke.begin(), exit.invoke.end());
     } else {

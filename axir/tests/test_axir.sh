@@ -72,4 +72,11 @@ status=$?
 set -e
 test "$status" -eq 12
 test "$output" = 'result-slot'
+./build/axirc emit tests/emit_virtual_slots.axir --target linux_x86_64 -o "$tmpdir/virtual-slots"
+set +e
+output=$("$tmpdir/virtual-slots")
+status=$?
+set -e
+test "$status" -eq 14
+test "$output" = 'virtual slots'
 printf 'AXIR tests passed\n'

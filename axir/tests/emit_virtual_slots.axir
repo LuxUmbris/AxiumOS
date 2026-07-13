@@ -1,0 +1,13 @@
+# Stack-backed virtual integer slots must survive syscall ABI marshalling.
+data message: "virtual slots\n"
+xor I[17], I[17], I[17]
+add I[17], I[17], 1
+addr I[18], message
+xor I[19], I[19], I[19]
+add I[19], I[19], 14
+mov I[0], I[17]
+mov I[1], I[18]
+mov I[2], I[19]
+syscall write
+mov I[25], I[0]
+hlt I[25]
