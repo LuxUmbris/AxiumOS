@@ -115,4 +115,10 @@ set +e
 status=$?
 set -e
 test "$status" -eq 42
+./build/axirc emit tests/emit_memory_widths.axir --target linux_x86_64 -o "$tmpdir/memory-widths"
+set +e
+"$tmpdir/memory-widths"
+status=$?
+set -e
+test "$status" -eq 252
 printf 'AXIR tests passed\n'
