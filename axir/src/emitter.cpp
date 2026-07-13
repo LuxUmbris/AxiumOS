@@ -105,6 +105,19 @@ void append_slot_binary_immediate(std::vector<std::uint8_t> &code, const std::st
   append_store_slot(code, 0, destination);
 }
 
+void append_slot_division(std::vector<std::uint8_t> &code, const std::string &opcode, std::uint64_t destination, std::uint64_t left, const Operand &right) {
+  append_load_slot(code, 0, left);
+  if (right.kind == IntegerSlot) append_load_slot(code, 3, right.slot);
+  else {
+    code.insert(code.end(), {0x48, 0xbb});
+    append_u64(code, right.immediate);
+  }
+  if (opcode == "divu" || opcode == "modu") code.insert(code.end(), {0x31, 0xd2, 0x48, 0xf7, 0xf3});
+  else if (opcode == "divs" || opcode == "mods") code.insert(code.end(), {0x48, 0x99, 0x48, 0xf7, 0xfb});
+  else throw std::runtime_error("internal unsupported division opcode");
+  append_store_slot(code, opcode == "mods" || opcode == "modu" ? 2 : 0, destination);
+}
+
 void append_slot_comparison(std::vector<std::uint8_t> &code, const std::string &opcode, std::uint64_t destination, std::uint64_t left, const Operand &right) {
   append_load_slot(code, 0, left);
   if (right.kind == IntegerSlot) {
@@ -219,6 +232,8 @@ void emit_linux_x86_64_executable(const Program &program, const TargetConfig &ta
       append_slot_binary_immediate(code, instruction.opcode, instruction.operands[0].slot, instruction.operands[1].slot, instruction.operands[2].immediate);
     } else if ((instruction.opcode == "add" || instruction.opcode == "sub" || instruction.opcode == "and" || instruction.opcode == "or" || instruction.opcode == "xor" || instruction.opcode == "mul" || instruction.opcode == "shl" || instruction.opcode == "shrl" || instruction.opcode == "shra") && instruction.operands[0].kind == IntegerSlot && instruction.operands[1].kind == IntegerSlot && instruction.operands[2].kind == IntegerSlot) {
       append_slot_binary_slots(code, instruction.opcode, instruction.operands[0].slot, instruction.operands[1].slot, instruction.operands[2].slot);
+    } else if ((instruction.opcode == "divs" || instruction.opcode == "divu" || instruction.opcode == "mods" || instruction.opcode == "modu") && instruction.operands[0].kind == IntegerSlot && instruction.operands[1].kind == IntegerSlot && (instruction.operands[2].kind == IntegerSlot || instruction.operands[2].kind == Immediate)) {
+      append_slot_division(code, instruction.opcode, instruction.operands[0].slot, instruction.operands[1].slot, instruction.operands[2]);
     } else if ((instruction.opcode == "cmp_eq" || instruction.opcode == "cmp_ne" || instruction.opcode == "cmp_lts" || instruction.opcode == "cmp_gts" || instruction.opcode == "cmp_les" || instruction.opcode == "cmp_ges" || instruction.opcode == "cmp_ltu" || instruction.opcode == "cmp_gtu" || instruction.opcode == "cmp_leu" || instruction.opcode == "cmp_geu") && instruction.operands[0].kind == IntegerSlot && instruction.operands[1].kind == IntegerSlot && (instruction.operands[2].kind == IntegerSlot || instruction.operands[2].kind == Immediate)) {
       append_slot_comparison(code, instruction.opcode, instruction.operands[0].slot, instruction.operands[1].slot, instruction.operands[2]);
     } else if (instruction.opcode == "addr" && instruction.operands[0].kind == IntegerSlot && instruction.operands[1].kind == Label) {

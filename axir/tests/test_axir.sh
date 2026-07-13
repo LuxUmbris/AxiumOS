@@ -97,4 +97,10 @@ set +e
 status=$?
 set -e
 test "$status" -eq 3
+./build/axirc emit tests/emit_division.axir --target linux_x86_64 -o "$tmpdir/division"
+set +e
+"$tmpdir/division"
+status=$?
+set -e
+test "$status" -eq 12
 printf 'AXIR tests passed\n'
