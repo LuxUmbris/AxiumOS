@@ -44,12 +44,12 @@ std::uint32_t slot_offset(std::uint64_t slot) {
 }
 
 void append_load_slot(std::vector<std::uint8_t> &code, std::uint8_t register_code, std::uint64_t slot) {
-  code.insert(code.end(), {0x48, 0x8b, static_cast<std::uint8_t>(0x84 | (register_code << 3)), 0x24});
+  code.insert(code.end(), {0x48, 0x8b, static_cast<std::uint8_t>(0x85 | (register_code << 3))});
   append_u32(code, slot_offset(slot));
 }
 
 void append_store_slot(std::vector<std::uint8_t> &code, std::uint8_t register_code, std::uint64_t slot) {
-  code.insert(code.end(), {0x48, 0x89, static_cast<std::uint8_t>(0x84 | (register_code << 3)), 0x24});
+  code.insert(code.end(), {0x48, 0x89, static_cast<std::uint8_t>(0x85 | (register_code << 3))});
   append_u32(code, slot_offset(slot));
 }
 
@@ -237,6 +237,7 @@ void emit_linux_x86_64_executable(const Program &program, const TargetConfig &ta
   };
   std::vector<std::uint8_t> code;
   const std::uint32_t frame_size = stack_frame_size(program, target);
+  code.insert(code.end(), {0x48, 0x89, 0xe5});
   if (frame_size != 0) {
     code.insert(code.end(), {0x48, 0x81, 0xec});
     append_u32(code, frame_size);
@@ -266,6 +267,11 @@ void emit_linux_x86_64_executable(const Program &program, const TargetConfig &ta
       const std::size_t address_offset = code.size() + 2;
       append_slot_immediate(code, instruction.operands[0].slot, 0);
       patches.push_back({address_offset, instruction.operands[1].label});
+    } else if (instruction.opcode == "call" && instruction.operands.size() == 1 && instruction.operands[0].kind == Label) {
+      code.insert(code.end(), {0xe8, 0, 0, 0, 0});
+      branch_patches.push_back({code.size() - 4, instruction.operands[0].label});
+    } else if (instruction.opcode == "ret_void" || (instruction.opcode == "ret" && (instruction.operands[0].kind == IntegerSlot || instruction.operands[0].kind == Immediate))) {
+      code.push_back(0xc3);
     } else if (instruction.opcode == "jmp" && instruction.operands[0].kind == Label) {
       code.insert(code.end(), {0xe9, 0, 0, 0, 0});
       branch_patches.push_back({code.size() - 4, instruction.operands[0].label});

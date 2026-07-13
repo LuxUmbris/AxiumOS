@@ -126,4 +126,10 @@ if ./build/axirc emit tests/emit_division_by_zero.axir --target linux_x86_64 -o 
   exit 1
 fi
 grep -q 'direct division or modulus by zero' "$tmpdir/division-by-zero.err"
+./build/axirc emit tests/emit_call.axir --target linux_x86_64 -o "$tmpdir/call"
+set +e
+"$tmpdir/call"
+status=$?
+set -e
+test "$status" -eq 37
 printf 'AXIR tests passed\n'

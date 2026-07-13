@@ -1,0 +1,6 @@
+call worker
+hlt I[17]
+worker:
+xor I[17], I[17], I[17]
+add I[17], I[17], 37
+ret_void
