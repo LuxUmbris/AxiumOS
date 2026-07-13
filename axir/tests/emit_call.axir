@@ -1,6 +1,7 @@
-call worker
-hlt I[17]
-func worker
 xor I[17], I[17], I[17]
-add I[17], I[17], 37
+add I[17], I[17], 35
+call worker, I[17]
+hlt I[25]
+func worker, I[2]
+add I[25], I[2], 2
 ret_void

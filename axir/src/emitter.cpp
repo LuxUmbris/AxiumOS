@@ -53,6 +53,20 @@ void append_store_slot(std::vector<std::uint8_t> &code, std::uint8_t register_co
   append_u32(code, slot_offset(slot));
 }
 
+std::uint8_t integer_register_code(const TargetConfig &target, std::size_t index) {
+  if (index >= target.integer_argument_registers.size()) throw std::runtime_error("too many direct integer call arguments");
+  const std::string &name = target.integer_argument_registers[index];
+  if (name == "rax") return 0;
+  if (name == "rcx") return 1;
+  if (name == "rdx") return 2;
+  if (name == "rbx") return 3;
+  if (name == "rsi") return 6;
+  if (name == "rdi") return 7;
+  if (name == "r8") return 8;
+  if (name == "r9") return 9;
+  throw std::runtime_error("unsupported direct integer argument register '" + name + "'");
+}
+
 void append_slot_immediate(std::vector<std::uint8_t> &code, std::uint64_t slot, std::uint64_t value) {
   code.insert(code.end(), {0x48, 0xb8});
   append_u64(code, value);
@@ -246,8 +260,17 @@ void emit_linux_x86_64_executable(const Program &program, const TargetConfig &ta
   std::vector<BranchPatch> branch_patches;
   std::vector<std::size_t> instruction_offsets;
   instruction_offsets.reserve(program.instructions.size() + 1);
-  for (const Instruction &instruction : program.instructions) {
+  for (std::size_t instruction_index = 0; instruction_index < program.instructions.size(); ++instruction_index) {
+    const Instruction &instruction = program.instructions[instruction_index];
     instruction_offsets.push_back(code.size());
+    for (const auto &[name, function] : program.functions) {
+      if (function.first_instruction != instruction_index) continue;
+      for (std::size_t parameter_index = 0; parameter_index < function.parameters.size(); ++parameter_index) {
+        const Operand &parameter = function.parameters[parameter_index];
+        if (parameter.kind != IntegerSlot) throw std::runtime_error("direct function floating-point parameters are not yet supported");
+        append_store_slot(code, integer_register_code(target, parameter_index), parameter.slot);
+      }
+    }
     if (instruction.opcode == "mov" && instruction.operands[0].kind == IntegerSlot && instruction.operands[1].kind == Immediate) {
       append_slot_immediate(code, instruction.operands[0].slot, instruction.operands[1].immediate);
     } else if (instruction.opcode == "mov" && instruction.operands[0].kind == IntegerSlot && instruction.operands[1].kind == IntegerSlot) {
@@ -267,7 +290,12 @@ void emit_linux_x86_64_executable(const Program &program, const TargetConfig &ta
       const std::size_t address_offset = code.size() + 2;
       append_slot_immediate(code, instruction.operands[0].slot, 0);
       patches.push_back({address_offset, instruction.operands[1].label});
-    } else if (instruction.opcode == "call" && instruction.operands.size() == 1 && instruction.operands[0].kind == Label) {
+    } else if (instruction.opcode == "call" && !instruction.operands.empty() && instruction.operands[0].kind == Label) {
+      for (std::size_t argument_index = 1; argument_index < instruction.operands.size(); ++argument_index) {
+        const Operand &argument = instruction.operands[argument_index];
+        if (argument.kind != IntegerSlot) throw std::runtime_error("direct function floating-point arguments are not yet supported");
+        append_load_slot(code, integer_register_code(target, argument_index - 1), argument.slot);
+      }
       code.insert(code.end(), {0xe8, 0, 0, 0, 0});
       branch_patches.push_back({code.size() - 4, instruction.operands[0].label});
     } else if (instruction.opcode == "ret_void") {
