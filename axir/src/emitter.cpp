@@ -308,7 +308,7 @@ void emit_linux_x86_64_executable(const Program &program, const TargetConfig &ta
 
   constexpr std::uint64_t base_address = 0x400000;
   constexpr std::size_t code_offset = 0x1000;
-  const std::size_t data_offset = align_up(code_offset + code.size(), 16);
+  const std::size_t data_offset = align_up(code_offset + code.size(), 0x1000);
   std::size_t data_size = 0;
   for (const DataObject &data : program.data) data_size += data.bytes.size();
   for (const DataPatch &patch : patches) {
@@ -339,21 +339,30 @@ void emit_linux_x86_64_executable(const Program &program, const TargetConfig &ta
   append_u32(image, 0);
   append_u16(image, 64);
   append_u16(image, 56);
-  append_u16(image, 1);
+  append_u16(image, 2);
   append_u16(image, 0);
   append_u16(image, 0);
   append_u16(image, 0);
 
   append_u32(image, 1);
-  append_u32(image, 7);
+  append_u32(image, 5);
   append_u64(image, 0);
   append_u64(image, base_address);
   append_u64(image, base_address);
-  append_u64(image, image_size);
-  append_u64(image, image_size);
+  append_u64(image, data_offset);
+  append_u64(image, data_offset);
   append_u64(image, code_offset);
 
-  if (image.size() != 120) throw std::runtime_error("internal ELF header size error");
+  append_u32(image, 1);
+  append_u32(image, 6);
+  append_u64(image, data_offset);
+  append_u64(image, base_address + data_offset);
+  append_u64(image, base_address + data_offset);
+  append_u64(image, data_size);
+  append_u64(image, data_size);
+  append_u64(image, code_offset);
+
+  if (image.size() != 176) throw std::runtime_error("internal ELF header size error");
   image.resize(code_offset, 0);
   image.insert(image.end(), code.begin(), code.end());
   image.resize(data_offset, 0);
