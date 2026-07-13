@@ -59,26 +59,35 @@ void append_slot_immediate(std::vector<std::uint8_t> &code, std::uint64_t slot, 
   append_store_slot(code, 0, slot);
 }
 
-void append_slot_add_immediate(std::vector<std::uint8_t> &code, std::uint64_t destination, std::uint64_t left, std::uint64_t immediate) {
-  if (immediate > std::numeric_limits<std::uint32_t>::max()) throw std::runtime_error("direct arithmetic immediate must fit in 32 bits");
-  append_load_slot(code, 0, left);
-  code.insert(code.end(), {0x48, 0x81, 0xc0});
-  append_u32(code, static_cast<std::uint32_t>(immediate));
-  append_store_slot(code, 0, destination);
-}
-
-void append_slot_sub_immediate(std::vector<std::uint8_t> &code, std::uint64_t destination, std::uint64_t left, std::uint64_t immediate) {
-  if (immediate > std::numeric_limits<std::uint32_t>::max()) throw std::runtime_error("direct arithmetic immediate must fit in 32 bits");
-  append_load_slot(code, 0, left);
-  code.insert(code.end(), {0x48, 0x81, 0xe8});
-  append_u32(code, static_cast<std::uint32_t>(immediate));
-  append_store_slot(code, 0, destination);
-}
-
-void append_slot_xor(std::vector<std::uint8_t> &code, std::uint64_t destination, std::uint64_t left, std::uint64_t right) {
+void append_slot_binary_slots(std::vector<std::uint8_t> &code, const std::string &opcode, std::uint64_t destination, std::uint64_t left, std::uint64_t right) {
   append_load_slot(code, 0, left);
   append_load_slot(code, 3, right);
-  code.insert(code.end(), {0x48, 0x31, 0xd8});
+  if (opcode == "add") code.insert(code.end(), {0x48, 0x01, 0xd8});
+  else if (opcode == "sub") code.insert(code.end(), {0x48, 0x29, 0xd8});
+  else if (opcode == "and") code.insert(code.end(), {0x48, 0x21, 0xd8});
+  else if (opcode == "or") code.insert(code.end(), {0x48, 0x09, 0xd8});
+  else if (opcode == "xor") code.insert(code.end(), {0x48, 0x31, 0xd8});
+  else if (opcode == "mul") code.insert(code.end(), {0x48, 0x0f, 0xaf, 0xc3});
+  else throw std::runtime_error("internal unsupported integer binary opcode");
+  append_store_slot(code, 0, destination);
+}
+
+void append_slot_binary_immediate(std::vector<std::uint8_t> &code, const std::string &opcode, std::uint64_t destination, std::uint64_t left, std::uint64_t immediate) {
+  if (immediate > std::numeric_limits<std::uint32_t>::max()) throw std::runtime_error("direct arithmetic immediate must fit in 32 bits");
+  append_load_slot(code, 0, left);
+  if (opcode == "mul") {
+    code.insert(code.end(), {0x48, 0x69, 0xc0});
+  } else {
+    std::uint8_t extension = 0;
+    if (opcode == "add") extension = 0;
+    else if (opcode == "or") extension = 1;
+    else if (opcode == "and") extension = 4;
+    else if (opcode == "sub") extension = 5;
+    else if (opcode == "xor") extension = 6;
+    else throw std::runtime_error("internal unsupported integer immediate opcode");
+    code.insert(code.end(), {0x48, 0x81, static_cast<std::uint8_t>(0xc0 | (extension << 3))});
+  }
+  append_u32(code, static_cast<std::uint32_t>(immediate));
   append_store_slot(code, 0, destination);
 }
 
@@ -166,12 +175,10 @@ void emit_linux_x86_64_executable(const Program &program, const TargetConfig &ta
     } else if (instruction.opcode == "mov" && instruction.operands[0].kind == IntegerSlot && instruction.operands[1].kind == IntegerSlot) {
       append_load_slot(code, 0, instruction.operands[1].slot);
       append_store_slot(code, 0, instruction.operands[0].slot);
-    } else if (instruction.opcode == "add" && instruction.operands[0].kind == IntegerSlot && instruction.operands[1].kind == IntegerSlot && instruction.operands[2].kind == Immediate) {
-      append_slot_add_immediate(code, instruction.operands[0].slot, instruction.operands[1].slot, instruction.operands[2].immediate);
-    } else if (instruction.opcode == "sub" && instruction.operands[0].kind == IntegerSlot && instruction.operands[1].kind == IntegerSlot && instruction.operands[2].kind == Immediate) {
-      append_slot_sub_immediate(code, instruction.operands[0].slot, instruction.operands[1].slot, instruction.operands[2].immediate);
-    } else if (instruction.opcode == "xor" && instruction.operands[0].kind == IntegerSlot && instruction.operands[1].kind == IntegerSlot && instruction.operands[2].kind == IntegerSlot) {
-      append_slot_xor(code, instruction.operands[0].slot, instruction.operands[1].slot, instruction.operands[2].slot);
+    } else if ((instruction.opcode == "add" || instruction.opcode == "sub" || instruction.opcode == "and" || instruction.opcode == "or" || instruction.opcode == "xor" || instruction.opcode == "mul") && instruction.operands[0].kind == IntegerSlot && instruction.operands[1].kind == IntegerSlot && instruction.operands[2].kind == Immediate) {
+      append_slot_binary_immediate(code, instruction.opcode, instruction.operands[0].slot, instruction.operands[1].slot, instruction.operands[2].immediate);
+    } else if ((instruction.opcode == "add" || instruction.opcode == "sub" || instruction.opcode == "and" || instruction.opcode == "or" || instruction.opcode == "xor" || instruction.opcode == "mul") && instruction.operands[0].kind == IntegerSlot && instruction.operands[1].kind == IntegerSlot && instruction.operands[2].kind == IntegerSlot) {
+      append_slot_binary_slots(code, instruction.opcode, instruction.operands[0].slot, instruction.operands[1].slot, instruction.operands[2].slot);
     } else if (instruction.opcode == "addr" && instruction.operands[0].kind == IntegerSlot && instruction.operands[1].kind == Label) {
       const std::size_t address_offset = code.size() + 2;
       append_slot_immediate(code, instruction.operands[0].slot, 0);

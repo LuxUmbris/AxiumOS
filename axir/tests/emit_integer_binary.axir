@@ -1,0 +1,12 @@
+# Direct integer binary forms use stack-backed virtual slots.
+xor I[17], I[17], I[17]
+add I[17], I[17], 6
+xor I[18], I[18], I[18]
+add I[18], I[18], 7
+mul I[19], I[17], I[18]
+or I[20], I[19], 1
+and I[21], I[20], 0x3f
+xor I[22], I[21], 1
+sub I[23], I[22], I[17]
+add I[24], I[23], I[17]
+hlt I[24]
