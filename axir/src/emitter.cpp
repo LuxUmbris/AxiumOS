@@ -270,7 +270,14 @@ void emit_linux_x86_64_executable(const Program &program, const TargetConfig &ta
     } else if (instruction.opcode == "call" && instruction.operands.size() == 1 && instruction.operands[0].kind == Label) {
       code.insert(code.end(), {0xe8, 0, 0, 0, 0});
       branch_patches.push_back({code.size() - 4, instruction.operands[0].label});
-    } else if (instruction.opcode == "ret_void" || (instruction.opcode == "ret" && (instruction.operands[0].kind == IntegerSlot || instruction.operands[0].kind == Immediate))) {
+    } else if (instruction.opcode == "ret_void") {
+      code.push_back(0xc3);
+    } else if (instruction.opcode == "ret" && instruction.operands[0].kind == IntegerSlot) {
+      append_load_slot(code, 0, instruction.operands[0].slot);
+      code.push_back(0xc3);
+    } else if (instruction.opcode == "ret" && instruction.operands[0].kind == Immediate) {
+      code.insert(code.end(), {0x48, 0xb8});
+      append_u64(code, instruction.operands[0].immediate);
       code.push_back(0xc3);
     } else if (instruction.opcode == "jmp" && instruction.operands[0].kind == Label) {
       code.insert(code.end(), {0xe9, 0, 0, 0, 0});
