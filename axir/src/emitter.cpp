@@ -44,12 +44,12 @@ std::uint32_t slot_offset(std::uint64_t slot) {
 }
 
 void append_load_slot(std::vector<std::uint8_t> &code, std::uint8_t register_code, std::uint64_t slot) {
-  code.insert(code.end(), {0x48, 0x8b, static_cast<std::uint8_t>(0x85 | (register_code << 3))});
+  code.insert(code.end(), {static_cast<std::uint8_t>(0x48 | ((register_code >> 3) << 2)), 0x8b, static_cast<std::uint8_t>(0x85 | ((register_code & 7) << 3))});
   append_u32(code, slot_offset(slot));
 }
 
 void append_store_slot(std::vector<std::uint8_t> &code, std::uint8_t register_code, std::uint64_t slot) {
-  code.insert(code.end(), {0x48, 0x89, static_cast<std::uint8_t>(0x85 | (register_code << 3))});
+  code.insert(code.end(), {static_cast<std::uint8_t>(0x48 | ((register_code >> 3) << 2)), 0x89, static_cast<std::uint8_t>(0x85 | ((register_code & 7) << 3))});
   append_u32(code, slot_offset(slot));
 }
 
