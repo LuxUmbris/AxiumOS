@@ -91,4 +91,10 @@ set +e
 status=$?
 set -e
 test "$status" -eq 3
+./build/axirc emit tests/emit_shifts.axir --target linux_x86_64 -o "$tmpdir/shifts"
+set +e
+"$tmpdir/shifts"
+status=$?
+set -e
+test "$status" -eq 3
 printf 'AXIR tests passed\n'

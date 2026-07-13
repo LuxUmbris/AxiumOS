@@ -61,6 +61,13 @@ void append_slot_immediate(std::vector<std::uint8_t> &code, std::uint64_t slot, 
 
 void append_slot_binary_slots(std::vector<std::uint8_t> &code, const std::string &opcode, std::uint64_t destination, std::uint64_t left, std::uint64_t right) {
   append_load_slot(code, 0, left);
+  if (opcode == "shl" || opcode == "shrl" || opcode == "shra") {
+    append_load_slot(code, 1, right);
+    const std::uint8_t extension = opcode == "shl" ? 4 : opcode == "shrl" ? 5 : 7;
+    code.insert(code.end(), {0x48, 0xd3, static_cast<std::uint8_t>(0xc0 | (extension << 3))});
+    append_store_slot(code, 0, destination);
+    return;
+  }
   append_load_slot(code, 3, right);
   if (opcode == "add") code.insert(code.end(), {0x48, 0x01, 0xd8});
   else if (opcode == "sub") code.insert(code.end(), {0x48, 0x29, 0xd8});
@@ -75,6 +82,13 @@ void append_slot_binary_slots(std::vector<std::uint8_t> &code, const std::string
 void append_slot_binary_immediate(std::vector<std::uint8_t> &code, const std::string &opcode, std::uint64_t destination, std::uint64_t left, std::uint64_t immediate) {
   if (immediate > std::numeric_limits<std::uint32_t>::max()) throw std::runtime_error("direct arithmetic immediate must fit in 32 bits");
   append_load_slot(code, 0, left);
+  if (opcode == "shl" || opcode == "shrl" || opcode == "shra") {
+    if (immediate > 255) throw std::runtime_error("direct shift immediate must fit in 8 bits");
+    const std::uint8_t extension = opcode == "shl" ? 4 : opcode == "shrl" ? 5 : 7;
+    code.insert(code.end(), {0x48, 0xc1, static_cast<std::uint8_t>(0xc0 | (extension << 3)), static_cast<std::uint8_t>(immediate)});
+    append_store_slot(code, 0, destination);
+    return;
+  }
   if (opcode == "mul") {
     code.insert(code.end(), {0x48, 0x69, 0xc0});
   } else {
@@ -201,9 +215,9 @@ void emit_linux_x86_64_executable(const Program &program, const TargetConfig &ta
     } else if (instruction.opcode == "mov" && instruction.operands[0].kind == IntegerSlot && instruction.operands[1].kind == IntegerSlot) {
       append_load_slot(code, 0, instruction.operands[1].slot);
       append_store_slot(code, 0, instruction.operands[0].slot);
-    } else if ((instruction.opcode == "add" || instruction.opcode == "sub" || instruction.opcode == "and" || instruction.opcode == "or" || instruction.opcode == "xor" || instruction.opcode == "mul") && instruction.operands[0].kind == IntegerSlot && instruction.operands[1].kind == IntegerSlot && instruction.operands[2].kind == Immediate) {
+    } else if ((instruction.opcode == "add" || instruction.opcode == "sub" || instruction.opcode == "and" || instruction.opcode == "or" || instruction.opcode == "xor" || instruction.opcode == "mul" || instruction.opcode == "shl" || instruction.opcode == "shrl" || instruction.opcode == "shra") && instruction.operands[0].kind == IntegerSlot && instruction.operands[1].kind == IntegerSlot && instruction.operands[2].kind == Immediate) {
       append_slot_binary_immediate(code, instruction.opcode, instruction.operands[0].slot, instruction.operands[1].slot, instruction.operands[2].immediate);
-    } else if ((instruction.opcode == "add" || instruction.opcode == "sub" || instruction.opcode == "and" || instruction.opcode == "or" || instruction.opcode == "xor" || instruction.opcode == "mul") && instruction.operands[0].kind == IntegerSlot && instruction.operands[1].kind == IntegerSlot && instruction.operands[2].kind == IntegerSlot) {
+    } else if ((instruction.opcode == "add" || instruction.opcode == "sub" || instruction.opcode == "and" || instruction.opcode == "or" || instruction.opcode == "xor" || instruction.opcode == "mul" || instruction.opcode == "shl" || instruction.opcode == "shrl" || instruction.opcode == "shra") && instruction.operands[0].kind == IntegerSlot && instruction.operands[1].kind == IntegerSlot && instruction.operands[2].kind == IntegerSlot) {
       append_slot_binary_slots(code, instruction.opcode, instruction.operands[0].slot, instruction.operands[1].slot, instruction.operands[2].slot);
     } else if ((instruction.opcode == "cmp_eq" || instruction.opcode == "cmp_ne" || instruction.opcode == "cmp_lts" || instruction.opcode == "cmp_gts" || instruction.opcode == "cmp_les" || instruction.opcode == "cmp_ges" || instruction.opcode == "cmp_ltu" || instruction.opcode == "cmp_gtu" || instruction.opcode == "cmp_leu" || instruction.opcode == "cmp_geu") && instruction.operands[0].kind == IntegerSlot && instruction.operands[1].kind == IntegerSlot && (instruction.operands[2].kind == IntegerSlot || instruction.operands[2].kind == Immediate)) {
       append_slot_comparison(code, instruction.opcode, instruction.operands[0].slot, instruction.operands[1].slot, instruction.operands[2]);
