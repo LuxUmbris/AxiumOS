@@ -1,0 +1,9 @@
+# Direct comparisons materialize canonical 0/1 values in high virtual slots.
+xor I[17], I[17], I[17]
+sub I[17], I[17], 3
+cmp_lts I[18], I[17], 0
+cmp_geu I[19], I[18], 1
+cmp_ne I[20], I[17], I[18]
+add I[21], I[18], I[19]
+add I[22], I[21], I[20]
+hlt I[22]

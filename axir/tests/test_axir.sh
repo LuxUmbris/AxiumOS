@@ -85,4 +85,10 @@ set +e
 status=$?
 set -e
 test "$status" -eq 42
+./build/axirc emit tests/emit_comparisons.axir --target linux_x86_64 -o "$tmpdir/comparisons"
+set +e
+"$tmpdir/comparisons"
+status=$?
+set -e
+test "$status" -eq 3
 printf 'AXIR tests passed\n'

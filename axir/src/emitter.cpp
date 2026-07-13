@@ -91,6 +91,32 @@ void append_slot_binary_immediate(std::vector<std::uint8_t> &code, const std::st
   append_store_slot(code, 0, destination);
 }
 
+void append_slot_comparison(std::vector<std::uint8_t> &code, const std::string &opcode, std::uint64_t destination, std::uint64_t left, const Operand &right) {
+  append_load_slot(code, 0, left);
+  if (right.kind == IntegerSlot) {
+    append_load_slot(code, 3, right.slot);
+    code.insert(code.end(), {0x48, 0x39, 0xd8});
+  } else {
+    if (right.immediate > std::numeric_limits<std::uint32_t>::max()) throw std::runtime_error("direct comparison immediate must fit in 32 bits");
+    code.insert(code.end(), {0x48, 0x81, 0xf8});
+    append_u32(code, static_cast<std::uint32_t>(right.immediate));
+  }
+  std::uint8_t condition = 0;
+  if (opcode == "cmp_eq") condition = 0x94;
+  else if (opcode == "cmp_ne") condition = 0x95;
+  else if (opcode == "cmp_lts") condition = 0x9c;
+  else if (opcode == "cmp_gts") condition = 0x9f;
+  else if (opcode == "cmp_les") condition = 0x9e;
+  else if (opcode == "cmp_ges") condition = 0x9d;
+  else if (opcode == "cmp_ltu") condition = 0x92;
+  else if (opcode == "cmp_gtu") condition = 0x97;
+  else if (opcode == "cmp_leu") condition = 0x96;
+  else if (opcode == "cmp_geu") condition = 0x93;
+  else throw std::runtime_error("internal unsupported comparison opcode");
+  code.insert(code.end(), {0x0f, condition, 0xc0, 0x48, 0x0f, 0xb6, 0xc0});
+  append_store_slot(code, 0, destination);
+}
+
 void append_syscall_arguments(std::vector<std::uint8_t> &code, const SyscallTemplate &syscall) {
   constexpr std::uint8_t argument_registers[] = {7, 6, 2};
   for (std::size_t index = 0; index < syscall.argument_slots.size(); ++index) append_load_slot(code, argument_registers[index], syscall.argument_slots[index]);
@@ -179,6 +205,8 @@ void emit_linux_x86_64_executable(const Program &program, const TargetConfig &ta
       append_slot_binary_immediate(code, instruction.opcode, instruction.operands[0].slot, instruction.operands[1].slot, instruction.operands[2].immediate);
     } else if ((instruction.opcode == "add" || instruction.opcode == "sub" || instruction.opcode == "and" || instruction.opcode == "or" || instruction.opcode == "xor" || instruction.opcode == "mul") && instruction.operands[0].kind == IntegerSlot && instruction.operands[1].kind == IntegerSlot && instruction.operands[2].kind == IntegerSlot) {
       append_slot_binary_slots(code, instruction.opcode, instruction.operands[0].slot, instruction.operands[1].slot, instruction.operands[2].slot);
+    } else if ((instruction.opcode == "cmp_eq" || instruction.opcode == "cmp_ne" || instruction.opcode == "cmp_lts" || instruction.opcode == "cmp_gts" || instruction.opcode == "cmp_les" || instruction.opcode == "cmp_ges" || instruction.opcode == "cmp_ltu" || instruction.opcode == "cmp_gtu" || instruction.opcode == "cmp_leu" || instruction.opcode == "cmp_geu") && instruction.operands[0].kind == IntegerSlot && instruction.operands[1].kind == IntegerSlot && (instruction.operands[2].kind == IntegerSlot || instruction.operands[2].kind == Immediate)) {
+      append_slot_comparison(code, instruction.opcode, instruction.operands[0].slot, instruction.operands[1].slot, instruction.operands[2]);
     } else if (instruction.opcode == "addr" && instruction.operands[0].kind == IntegerSlot && instruction.operands[1].kind == Label) {
       const std::size_t address_offset = code.size() + 2;
       append_slot_immediate(code, instruction.operands[0].slot, 0);
