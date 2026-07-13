@@ -1,0 +1,21 @@
+xor I[10], I[10], I[10]
+add I[10], I[10], 1
+xor I[11], I[11], I[11]
+add I[11], I[11], 2
+xor I[12], I[12], I[12]
+add I[12], I[12], 3
+xor I[13], I[13], I[13]
+add I[13], I[13], 4
+xor I[14], I[14], I[14]
+add I[14], I[14], 5
+xor I[15], I[15], I[15]
+add I[15], I[15], 6
+call total, I[10], I[11], I[12], I[13], I[14], I[15]
+hlt I[25]
+func total, I[2], I[3], I[4], I[5], I[6], I[7]
+add I[25], I[2], I[3]
+add I[25], I[25], I[4]
+add I[25], I[25], I[5]
+add I[25], I[25], I[6]
+add I[25], I[25], I[7]
+ret_void

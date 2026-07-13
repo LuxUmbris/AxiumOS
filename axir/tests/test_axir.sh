@@ -132,4 +132,10 @@ set +e
 status=$?
 set -e
 test "$status" -eq 37
+./build/axirc emit tests/emit_call_six_args.axir --target linux_x86_64 -o "$tmpdir/call-six"
+set +e
+"$tmpdir/call-six"
+status=$?
+set -e
+test "$status" -eq 21
 printf 'AXIR tests passed\n'
