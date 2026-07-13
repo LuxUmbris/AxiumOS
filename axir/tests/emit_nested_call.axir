@@ -1,0 +1,10 @@
+xor I[10], I[10], I[10]
+add I[10], I[10], 31
+call outer, I[10]
+hlt I[25]
+func outer, I[2]
+call inner, I[2]
+ret_void
+func inner, I[3]
+add I[25], I[3], 6
+ret_void

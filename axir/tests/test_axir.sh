@@ -138,4 +138,10 @@ set +e
 status=$?
 set -e
 test "$status" -eq 21
+./build/axirc emit tests/emit_nested_call.axir --target linux_x86_64 -o "$tmpdir/nested-call"
+set +e
+"$tmpdir/nested-call"
+status=$?
+set -e
+test "$status" -eq 37
 printf 'AXIR tests passed\n'
