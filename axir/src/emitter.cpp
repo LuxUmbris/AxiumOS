@@ -129,6 +129,7 @@ void append_memory_access(std::vector<std::uint8_t> &code, const Instruction &in
 }
 
 void append_slot_division(std::vector<std::uint8_t> &code, const std::string &opcode, std::uint64_t destination, std::uint64_t left, const Operand &right) {
+  if (right.kind == Immediate && right.immediate == 0) throw std::runtime_error("direct division or modulus by zero");
   append_load_slot(code, 0, left);
   if (right.kind == IntegerSlot) append_load_slot(code, 3, right.slot);
   else {

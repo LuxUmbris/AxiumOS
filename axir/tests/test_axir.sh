@@ -121,4 +121,9 @@ set +e
 status=$?
 set -e
 test "$status" -eq 252
+if ./build/axirc emit tests/emit_division_by_zero.axir --target linux_x86_64 -o "$tmpdir/division-by-zero" 2>"$tmpdir/division-by-zero.err"; then
+  echo 'expected immediate division by zero to be rejected' >&2
+  exit 1
+fi
+grep -q 'direct division or modulus by zero' "$tmpdir/division-by-zero.err"
 printf 'AXIR tests passed\n'
