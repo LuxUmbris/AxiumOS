@@ -49,6 +49,20 @@ std::vector<std::uint8_t> byte_sequence(const std::string &line, const std::stri
   return bytes;
 }
 
+std::vector<std::string> string_sequence(const std::string &line, const std::string &key) {
+  const std::string value = scalar_value(line, key);
+  if (value.size() < 2 || value.front() != '[' || value.back() != ']') return {};
+  std::vector<std::string> values;
+  std::istringstream input(value.substr(1, value.size() - 2));
+  std::string item;
+  while (std::getline(input, item, ',')) {
+    item = trim(item);
+    if (item.empty()) throw std::runtime_error("empty ABI register in target configuration");
+    values.push_back(std::move(item));
+  }
+  return values;
+}
+
 void parse_syscall_slots(const std::string &line, SyscallTemplate &syscall) {
   const std::size_t marker = line.find("slots: {");
   if (marker == std::string::npos) return;
@@ -94,6 +108,8 @@ TargetConfig load_target_config(std::string_view executable_path, std::string_vi
   std::vector<std::uint8_t> exit_number_sequence;
   std::vector<std::uint8_t> syscall_sequence;
   std::vector<SyscallTemplate> syscalls;
+  std::vector<std::string> integer_argument_registers;
+  std::string integer_return_register;
   std::string schema;
   std::string name;
   bool encoding_section = false;
@@ -104,6 +120,8 @@ TargetConfig load_target_config(std::string_view executable_path, std::string_vi
     if (text.empty() || text[0] == '#') continue;
     if (schema.empty()) schema = scalar_value(text, "schema_version");
     if (name.empty()) name = scalar_value(text, "name");
+    if (text.rfind("integer_argument_registers:", 0) == 0) integer_argument_registers = string_sequence(text, "integer_argument_registers");
+    if (text.rfind("integer_return_register:", 0) == 0) integer_return_register = scalar_value(text, "integer_return_register");
     if (text == "encoding:") encoding_section = true;
     if (encoding_section && text.find("bytes:") != std::string::npos) byte_template = true;
     if (text.rfind("mov_edi_imm32:", 0) == 0) exit_status_prefix = byte_sequence(text, "bytes: [");
@@ -132,12 +150,13 @@ TargetConfig load_target_config(std::string_view executable_path, std::string_vi
   if (name != target_name) throw std::runtime_error("target configuration name '" + name + "' does not match requested target '" + std::string(target_name) + "'");
   if (!encoding_section || !byte_template) throw std::runtime_error("target configuration '" + path.string() + "' must declare byte-based encoding templates");
   if (exit_status_prefix.empty() || exit_number_sequence.empty() || syscall_sequence.empty()) throw std::runtime_error("target configuration '" + path.string() + "' is missing process-exit byte templates");
+  if (integer_argument_registers.empty() || integer_return_register.empty()) throw std::runtime_error("target configuration '" + path.string() + "' is missing general call ABI mappings");
   for (std::size_t index = 0; index < required_syscalls.size(); ++index) {
     if (!syscall_sections[index]) throw std::runtime_error("target configuration '" + path.string() + "' is missing section 'syscall " + std::string(required_syscalls[index]) + "'");
     if (!syscall_bytes[index]) throw std::runtime_error("target configuration '" + path.string() + "' is missing bytes for 'syscall " + std::string(required_syscalls[index]) + "'");
     if (!syscall_slot_mappings[index]) throw std::runtime_error("target configuration '" + path.string() + "' is missing slot mapping for 'syscall " + std::string(required_syscalls[index]) + "'");
   }
-  return {name, path, std::move(exit_status_prefix), std::move(exit_number_sequence), std::move(syscall_sequence), std::move(syscalls)};
+  return {name, path, std::move(exit_status_prefix), std::move(exit_number_sequence), std::move(syscall_sequence), std::move(syscalls), std::move(integer_argument_registers), std::move(integer_return_register)};
 }
 
 } // namespace axir

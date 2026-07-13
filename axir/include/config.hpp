@@ -30,6 +30,8 @@ struct TargetConfig {
   std::vector<std::uint8_t> exit_number_sequence;
   std::vector<std::uint8_t> syscall_sequence;
   std::vector<SyscallTemplate> syscalls;
+  std::vector<std::string> integer_argument_registers;
+  std::string integer_return_register;
 };
 
 TargetConfig load_target_config(std::string_view executable_path, std::string_view target_name);
