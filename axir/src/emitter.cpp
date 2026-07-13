@@ -290,6 +290,14 @@ void emit_linux_x86_64_executable(const Program &program, const TargetConfig &ta
       const std::size_t address_offset = code.size() + 2;
       append_slot_immediate(code, instruction.operands[0].slot, 0);
       patches.push_back({address_offset, instruction.operands[1].label});
+    } else if (instruction.opcode == "argc" && instruction.operands[0].kind == IntegerSlot) {
+      code.insert(code.end(), {0x48, 0x8b, 0x45, 0x00});
+      append_store_slot(code, 0, instruction.operands[0].slot);
+    } else if (instruction.opcode == "argv" && instruction.operands[0].kind == IntegerSlot && instruction.operands[1].kind == Immediate) {
+      if (instruction.operands[1].immediate > (std::numeric_limits<std::uint32_t>::max() / 8) - 1) throw std::runtime_error("argv index is outside the direct-emission stack range");
+      code.insert(code.end(), {0x48, 0x8b, 0x85});
+      append_u32(code, static_cast<std::uint32_t>((instruction.operands[1].immediate + 1) * 8));
+      append_store_slot(code, 0, instruction.operands[0].slot);
     } else if (instruction.opcode == "call" && !instruction.operands.empty() && instruction.operands[0].kind == Label) {
       for (std::size_t argument_index = 1; argument_index < instruction.operands.size(); ++argument_index) {
         const Operand &argument = instruction.operands[argument_index];

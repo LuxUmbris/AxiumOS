@@ -1,0 +1,8 @@
+argc I[0]
+cmp_eq I[1], I[0], 2
+cjump I[1], argc_ok
+hlt 1
+argc_ok:
+argv I[2], 1
+load8u I[3], I[2]
+hlt I[3]

@@ -144,4 +144,10 @@ set +e
 status=$?
 set -e
 test "$status" -eq 37
+./build/axirc emit tests/emit_argv.axir --target linux_x86_64 -o "$tmpdir/argv"
+set +e
+"$tmpdir/argv" Z
+status=$?
+set -e
+test "$status" -eq 90
 printf 'AXIR tests passed\n'

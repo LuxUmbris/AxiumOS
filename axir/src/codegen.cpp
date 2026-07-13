@@ -187,6 +187,8 @@ void validate(const Program &program) {
     else if (op == "loadf32" || op == "loadf64") { count(in, 2); kind(in, 0, OperandKind::FloatSlot); kind(in, 1, OperandKind::IntegerSlot); }
     else if (op == "storef32" || op == "storef64") { count(in, 2); kind(in, 0, OperandKind::IntegerSlot); kind(in, 1, OperandKind::FloatSlot); }
     else if (op == "addr") { count(in, 2); kind(in, 0, OperandKind::IntegerSlot); data_label(in); }
+    else if (op == "argc") { count(in, 1); kind(in, 0, OperandKind::IntegerSlot); }
+    else if (op == "argv") { count(in, 2); kind(in, 0, OperandKind::IntegerSlot); kind(in, 1, OperandKind::Immediate); }
     else if (int_binary(op)) { count(in, 3); kind(in, 0, OperandKind::IntegerSlot); kind(in, 1, OperandKind::IntegerSlot); int_or_imm(in, 2); }
     else if (op == "mov") { count(in, 2); kind(in, 0, OperandKind::IntegerSlot); kind(in, 1, OperandKind::IntegerSlot); }
     else if (float_binary(op)) { count(in, 3); kind(in, 0, OperandKind::FloatSlot); kind(in, 1, OperandKind::FloatSlot); kind(in, 2, OperandKind::FloatSlot); }
